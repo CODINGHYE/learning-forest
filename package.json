@@ -1,0 +1,10 @@
+{
+  "name": "learning-forest-harness",
+  "private": true,
+  "scripts": {
+    "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File ./verify.ps1"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

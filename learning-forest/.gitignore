@@ -1,5 +1,9 @@
 .sites/
 .env*
+!.env.example
+__pycache__/
+!.env.example
+__pycache__/
 node_modules/
 *.tar.gz
 qa-output/

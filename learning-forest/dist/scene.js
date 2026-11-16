@@ -53,7 +53,7 @@
         ctx.beginPath();
         if(c.type==='line'){
           ctx.moveTo(p.x,p.y);ctx.lineTo(c.screen[1].x,c.screen[1].y);ctx.strokeStyle=c.color;ctx.lineWidth=c.width;ctx.setLineDash(c.dash?[4,5]:[]);ctx.stroke();ctx.setLineDash([]);
-          if(c.arrow){const end=c.screen[1],angle=Math.atan2(end.y-p.y,end.x-p.x),length=9;ctx.beginPath();ctx.moveTo(end.x,end.y);ctx.lineTo(end.x-length*Math.cos(angle-.4),end.y-length*Math.sin(angle-.4));ctx.moveTo(end.x,end.y);ctx.lineTo(end.x-length*Math.cos(angle+.4),end.y-length*Math.sin(angle+.4));ctx.stroke();}
+          if(c.arrow){const end=c.screen[1],angle=Math.atan2(end.y-p.y,end.x-p.x),length=10,x=end.x-12*Math.cos(angle),y=end.y-12*Math.sin(angle);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-length*Math.cos(angle-.4),y-length*Math.sin(angle-.4));ctx.moveTo(x,y);ctx.lineTo(x-length*Math.cos(angle+.4),y-length*Math.sin(angle+.4));ctx.stroke();}
         }else if(c.type==='poly'){
           ctx.moveTo(p.x,p.y);c.screen.slice(1).forEach(v=>ctx.lineTo(v.x,v.y));ctx.closePath();ctx.fillStyle=c.fill;ctx.fill();if(c.stroke){ctx.strokeStyle=c.stroke;ctx.lineWidth=.7;ctx.stroke();}
         }else if(c.type==='point'){

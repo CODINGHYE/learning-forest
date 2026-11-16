@@ -22,12 +22,13 @@
     'Q4.3':'backward()는 기울기를 만듭니다. 실제 파라미터를 바꾸는 optimizer.step()과는 별도 단계입니다.'
   };
   const stage=new ForestStage($('scene'));
+  const expandedGroups=new Set();
   let selected='Q1.1',group=content.groups[0],q=questions.get(selected),state={},timer=null,pdfUrl=null,pdfName='',analysisRequest=null;
   function sceneId(){return q?(q.sceneId||(!q.kind?q.id:null)):group.preview;}
   function review(){return q?(q.review?.instruction?q.review:(demoContent.questions.find(item=>item.id===sceneId())?.review||{})):{};}
   const maxSteps=()=>!q?1:({'Q1.1':1,'Q1.2':1,'Q1.3':2,'Q2.1':1,'Q2.2':2,'Q2.3':1,'Q3.1':2,'Q3.2':5,'Q3.3':4,'Q3.4':8,'Q4.1':2,'Q4.2':5,'Q4.3':4}[sceneId()]);
   function initialState(){return {n:0,u:1,v:1,pred:4,axis:'u',lr:.025,path:[M.values()],gate:'XOR',angle:45,threshold:1,w1:0,w2:0,b:0,cell:0,manual:false};}
-  function stop(){if(timer){clearInterval(timer);timer=null;}$('play-button').textContent='전체 단계 자동 재생';}
+  function stop(){if(timer){clearInterval(timer);timer=null;}const play=$('play-button');play.textContent='전체 단계 자동 재생';play.disabled=!!q&&state.n>=maxSteps();}
   function go(id,push=true){
     stop();selected=id==='OVERVIEW'||questions.has(id)||content.groups.some(g=>g.id===id)?id:'OVERVIEW';q=questions.get(selected)||null;group=selected==='OVERVIEW'?{id:'OVERVIEW',short:'전체 개념지도',title:content.document?content.document.name:'딥러닝 기초 · 전체 개념지도',intro:'큰 흐름에서 궁금한 개념을 선택하세요.',preview:null}:content.groups.find(g=>g.id===(q?q.group:selected));state=initialState();stage.resetCamera();
     if(push)history.pushState(null,'','#'+selected);
@@ -39,7 +40,7 @@
     const nav=$('question-map');nav.replaceChildren();let mobileQuestions=null;
     content.groups.forEach((g,i)=>{
       const wrapper=el('div','group'),a=navLink(g.id,'group-link','');a.setAttribute('aria-current',String(group.id===g.id));a.append(el('span','group-number',String(i+1)),el('span','',g.title));wrapper.append(a);nav.append(wrapper);
-      if(group.id===g.id){const list=el('ol','small-questions');content.questions.filter(item=>item.group===g.id).forEach(item=>{const li=el('li'),link=navLink(item.id,'question-link','');if(item.id===selected)link.setAttribute('aria-current','page');if(item.concept)link.append(el('span','concept-name',item.concept));else link.append(el('span','qid',item.id.replace('Q','')));link.append(el('span','',item.title));li.append(link);list.append(li);});if(matchMedia('(max-width:680px)').matches)mobileQuestions=list;else wrapper.append(list);}
+      if(group.id===g.id){const list=el('ol','small-questions'),all=content.questions.filter(item=>item.group===g.id);let visible=all;if(all.length>5&&!expandedGroups.has(g.id)){visible=all.slice(0,4);if(q&&q.group===g.id&&!visible.includes(q))visible.push(q);}visible.forEach(item=>{const li=el('li'),link=navLink(item.id,'question-link','');if(item.id===selected)link.setAttribute('aria-current','page');if(item.concept)link.append(el('span','concept-name',item.concept));else link.append(el('span','qid',item.id.replace('Q','')));link.append(el('span','',item.title));li.append(link);list.append(li);});if(visible.length<all.length){const li=el('li');li.append(button(`이 묶음의 개념 ${all.length}개 모두 보기`,()=>{expandedGroups.add(g.id);renderNavigation();},'button map-expand'));list.append(li);}if(matchMedia('(max-width:680px)').matches)mobileQuestions=list;else wrapper.append(list);}
     });
     if(mobileQuestions)nav.append(mobileQuestions);
   }
@@ -48,7 +49,7 @@
     $('question-title').textContent=q?q.title:group.title;
     const r=review(),hasScene=!!sceneId(),isOverview=group.id==='OVERVIEW'||!!content.document&&!q;
     $('takeaway').textContent=q?(q.kind==='pdf'?q.explain:r.takeaway||q.goal):group.intro;
-    $('prediction').textContent=q?q.predict:group.intro;document.querySelector('.prediction-box').hidden=!q;
+    $('prediction').textContent=q?(q.kind==='pdf'?q.predict:r.predict||q.predict):group.intro;document.querySelector('.prediction-box').hidden=!q;
     $('easy-explanation').replaceChildren();
     const paragraphs=q?(q.kind==='pdf'?[q.explain]:(r.explain||[q.explain])):[group.intro];
     paragraphs.forEach(text=>$('easy-explanation').append(el('p','',text)));
@@ -65,7 +66,7 @@
     const box=$('concept-overview');box.hidden=!show;box.replaceChildren();if(!show)return;
     box.append(el('p','overview-summary',content.document?`${content.document.pageCount}쪽에서 ${content.questions.length}개 개념을 찾았습니다. 개념 이름을 누르면 쉬운 설명, 관련 질문, 실제 PDF 근거를 볼 수 있습니다.`:'네 가지 큰 질문에 연결된 13개 질문입니다. 궁금한 질문부터 선택할 수 있습니다.'));
     const grid=el('div','concept-overview-grid');const groups=group.id==='OVERVIEW'?content.groups:content.groups.filter(g=>g.id===group.id);
-    groups.forEach(g=>{const card=el('section','overview-group');card.append(el('h3','',g.title));content.questions.filter(item=>item.group===g.id).forEach(item=>{const a=navLink(item.id,'overview-concept',item.concept||item.title);if(item.concept)a.append(el('small','',item.title));if(item.page)a.append(el('small','',`PDF ${item.page}쪽부터 확인`));card.append(a);});grid.append(card);});box.append(grid);
+    groups.forEach(g=>{const card=el('section','overview-group'),all=content.questions.filter(item=>item.group===g.id),visible=group.id==='OVERVIEW'?all.slice(0,3):all;card.append(el('h3','',`${g.title} · ${all.length}개`));visible.forEach(item=>{const a=navLink(item.id,'overview-concept',item.concept||item.title);if(item.concept)a.append(el('small','',item.title));if(item.page)a.append(el('small','',`PDF ${item.page}쪽부터 확인`));card.append(a);});if(visible.length<all.length)card.append(navLink(g.id,'overview-more',`이 묶음의 ${all.length}개 개념 모두 보기 →`));grid.append(card);});box.append(grid);
     if(content.edges?.length)box.append(el('p','overview-summary','개념을 열면 관련 개념과 이어지는 이유도 확인할 수 있어요. 연결은 발명 순서가 아닌, 학습을 돕는 관계입니다.'));
   }
   function button(text,fn,cls='button'){const b=el('button',cls,text);b.type='button';b.addEventListener('click',fn);return b;}
@@ -85,12 +86,12 @@
     if(sceneId()==='Q3.1')box.append(rangeControl('예측값 · 정답은 8','pred',0,16,.1));
     if(sceneId()==='Q3.2')box.append(choiceControl('조금 바꿔볼 숫자','axis',[['u','u'],['v','v']],()=>{state.n=0;state.u=1;state.v=1;}));
     if(sceneId()==='Q3.4')box.append(selectControl('한 걸음의 크기 · 학습률','lr',[[.005,'0.005 · 작은 걸음'],[.025,'0.025 · 중간 걸음'],[.15,'0.15 · 큰 걸음']],()=>{stop();state.n=0;state.u=1;state.v=1;state.path=[M.values()];}));
-    if(sceneId()==='Q4.1')box.append(selectControl('따라가 볼 원소','cell',Array.from({length:12},(_,i)=>[i,`${i} · 예시 ${Math.floor(i/6)+1}, 행 ${Math.floor(i%6/3)+1}, 열 ${i%3+1}`])));
+    if(sceneId()==='Q4.1')box.append(selectControl('따라가 볼 숫자','cell',Array.from({length:12},(_,i)=>[i,`${i} · 예시 ${Math.floor(i/6)+1}, 행 ${Math.floor(i%6/3)+1}, 열 ${i%3+1}`])));
   }
   function syncControls(){document.querySelectorAll('[data-control]').forEach(input=>{input.value=state[input.dataset.control];});document.querySelectorAll('[data-value]').forEach(span=>span.textContent=fmt(state[span.dataset.value]));document.querySelectorAll('[data-choice-key]').forEach(b=>b.setAttribute('aria-pressed',String(String(state[b.dataset.choiceKey])===b.dataset.choiceValue)));}
   function renderExtra(){
     const extra=$('extra-content');extra.replaceChildren();if(!q)return;
-    const terms=el('details','terms-details');terms.append(el('summary','','전문용어 풀이 · 쉬운 말과 이름 연결하기'));const list=el('dl','term-list');const definitions=q.kind==='pdf'?[[q.concept,q.explain]]:review().terms||[[q.terms,q.explain]];definitions.forEach(([name,meaning])=>list.append(el('dt','',name),el('dd','',meaning)));terms.append(list);extra.append(terms);
+    const definitions=review().terms||(!q.kind?[[q.terms,q.explain]]:[]);if(definitions.length){const terms=el('details','terms-details');terms.append(el('summary','','전문용어 풀이 · 실험에서 쓴 이름 이해하기'));const list=el('dl','term-list');definitions.forEach(([name,meaning])=>list.append(el('dt','',name),el('dd','',meaning)));terms.append(list);extra.append(terms);}
     if(sceneId()){const math=el('details','math-details');math.append(el('summary','','계산 확인 · 사용한 숫자와 수식 펼치기'));const pre=el('pre');pre.id='calculation-data';math.append(pre);if(q.caution)math.append(el('p','',q.caution));extra.append(math);}
   }
   function renderLinks(){const links=$('next-questions');links.replaceChildren();$('connection-reason').textContent=q?(review().bridge||'다른 개념과 어떤 관계가 있는지 확인해보세요.'):'';if(q&&content.edges){const relations=content.edges.filter(e=>e.from===q.id||e.to===q.id);relations.forEach(edge=>{const other=questions.get(edge.from===q.id?edge.to:edge.from);if(!other)return;const row=el('div','relation-item');row.append(el('span','relation-type',edge.type),navLink(other.id,'',other.concept||other.title),el('div','',edge.reason));links.append(row);});if(!relations.length)links.append(el('p','source-note','이 개념의 연결은 원문에서 더 확인할 수 있어요. 전체 지도로 돌아가 다른 개념을 선택해보세요.'));return;}let ids=q?q.next:content.questions.filter(item=>item.group===group.id).map(item=>item.id);if(!ids.length)ids=['Q1.2'];ids.forEach(id=>{const item=questions.get(id);if(item)links.append(navLink(id,'next-link',item.title));});}
@@ -182,10 +183,10 @@
     const showGraph=!remember||n>0;
     stage.clear([0,.35,0],8.3);
     const points={u:[-2.8,1.1,-.7],v:[-2.8,-.65,1],a:[-.85,1.25,-1],p:[1.05,.25,0],L:[2.8,.25,0]};
-    const labels={u:`첫 설정 u\n${fmt(s.u)}`,v:`둘째 설정 v\n${fmt(s.v)}`,a:`두 배 a\n${fmt(s.a)}`,p:`예측 p\n${fmt(s.p)}`,L:`손실 L\n${fmt(s.loss)}`};
+    const labels={u:`첫째 손잡이 u\n${fmt(s.u)}`,v:`둘째 손잡이 v\n${fmt(s.v)}`,a:`u 두 배 · a\n${fmt(s.a)}`,p:`예측한 답 p\n${fmt(s.p)}`,L:`틀린 정도 L\n${fmt(s.loss)}`};
     const edges=[['u','a',3,'×2'],['a','p',2,'+a'],['u','p',2,'+u'],['v','p',2,'+v'],['p','L',1,'차이²']];
     if(showGraph){
-      edges.forEach(([from,to,at,label])=>{const a=points[from],b=points[to],active=phase>=at;stage.arrow(active?b:a,active?a:b,active?C.gold:'#7185a5',active?2.8:1.5);const mid=a.map((x,i)=>(x+b[i])/2);stage.label(mid,active?(from==='p'?'-8':from==='u'&&to==='a'?'-16':'-8'):label,{offset:from==='u'&&to==='p'?[0,23]:[0,-12],color:active?C.gold:C.muted,size:11,plate:true});});
+      edges.forEach(([from,to,at,label])=>{const a=points[from],b=points[to],active=phase>=at;stage.arrow(active?b:a,active?a:b,active?C.gold:'#7185a5',active?2.8:1.5);const mid=a.map((x,i)=>(x+b[i])/2);if(phase===0||phase===at)stage.label(mid,active?(from==='p'?'-8':from==='u'&&to==='a'?'-16':'-8'):label,{offset:from==='u'&&to==='p'?[0,23]:[0,-12],color:active?C.gold:C.muted,size:11,plate:true});});
     }
     Object.entries(points).forEach(([key,p])=>{if(!showGraph&&key!=='p'&&key!=='L')return;stage.point(p,{radius:key==='L'?11:9,color:key==='L'?C.gold:key==='u'&&phase>=4?C.gold:C.green});stage.label(p,labels[key],{offset:[0,key==='a'?-42:20],plate:true,size:12});});
     if(phase>=4){stage.label([-2.7,2,-.7],'u의 영향 = -16 + -8 = -24',{plate:true,color:C.gold,size:12});stage.label([-2.7,-1.6,1],'v의 영향 = -8',{plate:true,color:C.gold,size:12});}
@@ -207,7 +208,7 @@
       stage.label([0,-1.7,0],'첫 출력: 0+2+4=6 / 다음 출력: 1+3+5=9',{size:11,color:C.muted});
     }
     const b=Math.floor(state.cell/6),r=Math.floor(state.cell%6/3),c=state.cell%3;
-    return {space:'배열 공간 · 축은 인덱스 / 블록은 숫자 하나',caption:['예시 두 개, 각각 2행 3열입니다. 블록을 누르면 같은 원소를 따라갈 수 있어요.','숫자는 바꾸지 않고, 예시마다 여섯 숫자를 한 줄에 놓았습니다.','행렬곱으로 새로운 출력 네 개를 계산했습니다.'][n],stats:[['모양',['(2, 2, 3)','(2, 6)','(2, 2)'][n]],['원소 수',n<2?'12':'4'],...(n<2?[['선택한 값',String(state.cell)]]:[])],calc:`선택 원소 (0부터 센 인덱스): [${b},${r},${c}] = ${state.cell}\n펼친 뒤: [${b},${state.cell%6}] = ${state.cell}\n\nX = [[0,1,2,3,4,5], [6,7,8,9,10,11]]\nW = [[1,0],[0,1],[1,0],[0,1],[1,0],[0,1]]\nX @ W = ${JSON.stringify(out)}\n선택한 원소의 값과, 새로 계산한 출력값은 구분합니다.`};
+    return {space:'배열 공간 · 축은 숫자의 자리 / 블록은 숫자 하나',caption:['예시 두 개, 각각 2행 3열입니다. 블록을 누르면 선택한 숫자의 위치를 확인할 수 있어요.','숫자는 바꾸지 않고, 예시마다 여섯 숫자를 한 줄에 놓았습니다.','행렬곱으로 새로운 출력 네 개를 계산했습니다.'][n],stats:[['모양',['(2, 2, 3)','(2, 6)','(2, 2)'][n]],['원소 수',n<2?'12':'4'],...(n<2?[['선택한 값',String(state.cell)]]:[])],calc:`선택 원소 (0부터 센 인덱스): [${b},${r},${c}] = ${state.cell}\n펼친 뒤: [${b},${state.cell%6}] = ${state.cell}\n화면의 행·열은 1부터, 코드의 인덱스는 0부터 셉니다.\n\nX = [[0,1,2,3,4,5], [6,7,8,9,10,11]]\nW = [[1,0],[0,1],[1,0],[0,1],[1,0],[0,1]]\nX @ W = ${JSON.stringify(out)}\n선택한 원소의 값과, 새로 계산한 출력값은 구분합니다.`};
   }
   function actionLabel(){
     if(!q)return '첫 질문 열기';
@@ -225,13 +226,13 @@
     else if(id==='Q4.1')info=tensorScene();
     else info=graphScene(id);
     stage.onPick=q&&sceneId()==='Q4.1'&&state.n<2?i=>{state.cell=i;refresh();}:null;
-    if(id==='Q3.2'){const last=M.values(state.u,state.v),before=M.values(state.u-(state.n&&state.axis==='u'?.01:0),state.v-(state.n&&state.axis==='v'?.01:0));info.caption=state.n?`이번에는 ${state.axis}를 0.01 키웠습니다. 예측은 ${fmt(before.p)} → ${fmt(last.p)}, 틀린 정도는 ${fmt(before.loss)} → ${fmt(last.loss)}로 바뀌었습니다.`:'바닥의 점은 예시 데이터가 아니라 손잡이 설정 하나입니다. 손잡이를 조금 바꾼 뒤, 틀린 정도가 줄어드는지 숫자로도 확인하세요.';}
+    if(id==='Q3.2'){const last=M.values(state.u,state.v),before=M.values(state.u-(state.n&&state.axis==='u'?.01:0),state.v-(state.n&&state.axis==='v'?.01:0));$('prediction').textContent=`${state.axis==='u'?'첫째 손잡이 u':'둘째 손잡이 v'}를 조금 키우면 틀린 정도가 줄어들까요?`;info.caption=state.n?`이번에는 ${state.axis}를 0.01 키웠습니다. 예측은 ${fmt(before.p)} → ${fmt(last.p)}, 틀린 정도는 ${fmt(before.loss)} → ${fmt(last.loss)}로 바뀌었습니다.`:'바닥의 점은 예시 데이터가 아니라 손잡이 설정 하나입니다. 손잡이를 조금 바꾼 뒤, 틀린 정도가 줄어드는지 숫자로도 확인하세요.';}
     if(id==='Q3.3')info.caption=['첫째 손잡이 u와 둘째 손잡이 v로 예측 4를 만들었습니다. 정답 8과 비교한 틀린 정도는 16입니다.','예측이 조금 커질 때 틀린 정도가 어떻게 변하는지 먼저 계산합니다. 그 영향이 -8입니다.','더하기로 연결된 세 경로에서 같은 영향 -8을 다시 사용합니다. 아직 손잡이는 바꾸지 않습니다.','u가 두 배 되는 길에서는 영향도 두 배가 됩니다. -8 × 2 = -16입니다.','u로 오는 두 길의 영향 -16과 -8을 합쳐 -24를 얻었습니다. u와 v의 값은 여전히 1입니다.'][state.n];
     stage.draw();$('scene-space').textContent=info.space;$('scene-caption').textContent=info.caption;$('scene').setAttribute('aria-label',(q?q.title:group.title)+'. '+info.caption);
     const friendly={u:'첫째 손잡이 u',v:'둘째 손잡이 v',w1:'크기 반영',w2:'색 반영','기준 b':'판단 기준 위치','예측':'예측한 답','손실':'틀린 정도','제곱오차':'틀린 정도 · 제곱오차','기울기':'계산한 영향','원소 수':'숫자 개수','선택한 값':'선택한 숫자'};
     const result=$('live-result');result.replaceChildren();info.stats.forEach(([label,value])=>{const item=el('div','result-item');item.append(el('small','',friendly[label]||label),el('strong','',String(value)));result.append(item);});
     const calc=$('calculation-data');if(calc)calc.textContent=info.calc;
-    $('step-button').textContent=actionLabel();$('step-button').disabled=!!q&&state.n>=maxSteps();$('play-button').hidden=!q;$('reset-button').hidden=!q;$('play-button').disabled=!!q&&state.n>=maxSteps()&&!timer;$('step-count').textContent=q?`${state.n} / ${maxSteps()} 단계`: '전체 흐름에서 궁금한 질문을 선택하세요';
+    $('step-button').textContent=actionLabel();$('step-button').disabled=!!q&&state.n>=maxSteps();$('play-button').hidden=!q;$('reset-button').hidden=!q;$('play-button').disabled=!!q&&state.n>=maxSteps()&&!timer;$('step-count').textContent=q?`${state.n} / ${maxSteps()} 단계${state.n>=maxSteps()?' · 마지막 단계':''}`: '전체 흐름에서 궁금한 질문을 선택하세요';
     if(q&&state.n>=maxSteps()&&timer)stop();
     if(q&&sceneId()==='Q4.1'){const input=$('control-cell');if(input)input.disabled=state.n>=2;}
   }
@@ -253,7 +254,8 @@
   function showAnalysis(message,error=false){const node=$('analysis-progress');node.hidden=false;node.classList.toggle('error',error);node.textContent=message;}
   function updateDocument(){const doc=content.document;$('document-name').textContent=doc?doc.name:'딥러닝 기초 · 13개 질문 예시 지도';$('analysis-notice').textContent=doc?`${doc.analysisLabel} · ${doc.pageCount}쪽 · ${doc.conceptCount}개 개념. ${doc.notice}`:'PDF를 선택하면 본문과 근거 페이지를 분석해 새 개념지도를 만듭니다.';$('demo-button').hidden=!doc;}
   $('overview-button').addEventListener('click',()=>go('OVERVIEW'));
-  $('demo-button').addEventListener('click',()=>{if(analysisRequest)analysisRequest.abort();content=demoContent;questions=new Map(content.questions.map(item=>[item.id,item]));if(pdfUrl)URL.revokeObjectURL(pdfUrl);pdfUrl=null;pdfName='';updateDocument();$('analysis-progress').hidden=true;go('OVERVIEW');});
+  $('evidence-button').addEventListener('click',()=>{$('source-details').open=true;$('source-details').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'});});
+  $('demo-button').addEventListener('click',()=>{if(analysisRequest)analysisRequest.abort();expandedGroups.clear();content=demoContent;questions=new Map(content.questions.map(item=>[item.id,item]));if(pdfUrl)URL.revokeObjectURL(pdfUrl);pdfUrl=null;pdfName='';updateDocument();$('analysis-progress').hidden=true;go('OVERVIEW');});
   $('analysis-mode').addEventListener('change',()=>{$('analysis-notice').textContent=$('analysis-mode').value==='openai'?'PDF에서 추출한 텍스트를 OpenAI로 보내 문맥을 분석합니다. 파일을 선택하면 시작합니다.':'PDF 텍스트를 이 PC에서 구조 분석합니다. 파일을 선택하면 시작합니다.';});
   $('pdf-file').addEventListener('change',async event=>{
     const file=event.target.files[0];event.target.value='';if(!file)return;
@@ -265,7 +267,7 @@
       if(!(response.headers.get('content-type')||'').includes('application/json'))throw Error('PDF 분석 서버가 실행되지 않았습니다. 로컬 분석 서버로 화면을 열어주세요.');
       const result=await response.json();if(!response.ok)throw Error(result.error||'PDF 분석을 완료하지 못했습니다.');if(analysisRequest!==request)return;
       if(!Array.isArray(result.questions)||!result.questions.length||!Array.isArray(result.groups))throw Error('PDF에서 개념을 찾지 못했습니다. 다른 파일을 선택해주세요.');
-      if(pdfUrl)URL.revokeObjectURL(pdfUrl);pdfUrl=URL.createObjectURL(file);pdfName=file.name;content=result;questions=new Map(content.questions.map(item=>[item.id,item]));
+      if(pdfUrl)URL.revokeObjectURL(pdfUrl);pdfUrl=URL.createObjectURL(file);pdfName=file.name;expandedGroups.clear();content=result;questions=new Map(content.questions.map(item=>[item.id,item]));
       updateDocument();showAnalysis(`개념지도 생성 완료 · ${result.document.pageCount}쪽에서 ${result.questions.length}개 개념을 찾았습니다. 아래에서 개념을 선택해보세요.`);go('OVERVIEW');
     }catch(error){if(error.name!=='AbortError')showAnalysis(error.message||'분석 연결에 실패했습니다. 현재 지도는 유지됩니다.',true);}
     finally{if(analysisRequest===request)analysisRequest=null;}
@@ -273,7 +275,7 @@
   window.addEventListener('popstate',()=>go(location.hash.slice(1)||'G1',false));
   let mobile=matchMedia('(max-width:680px)').matches;window.addEventListener('resize',()=>{const next=matchMedia('(max-width:680px)').matches;if(mobile!==next){mobile=next;renderNavigation();}});
   document.querySelector('.brand').addEventListener('click',event=>{event.preventDefault();go('G1');});
-  window.ForestApp={selectQuestion:go,advance,snapshot:()=>({selected,sceneId:sceneId(),group:group.id,state:JSON.parse(JSON.stringify(state)),document:content.document||null,concepts:content.questions.map(item=>({id:item.id,title:item.title,sceneId:item.sceneId,concept:item.concept})),autodiff:M.autodiff(),playing:!!timer}),setControl:(key,value)=>{if(!(key in state))throw Error('Unknown control');state[key]=value;refresh();}};
-  go(location.hash.slice(1)||'G1',false);
+  window.ForestApp={selectQuestion:go,advance,snapshot:()=>({selected,sceneId:sceneId(),group:group.id,state:JSON.parse(JSON.stringify(state)),document:content.document||null,concepts:content.questions.map(item=>({id:item.id,title:item.title,sceneId:item.sceneId,concept:item.concept})),autodiff:M.autodiff(),playing:!!timer}),sceneDiagnostics:()=>({width:stage.w,height:stage.h,labels:stage.labelBounds||[],arrows:stage.commands.filter(item=>item.arrow).map(item=>item.points)}),setControl:(key,value)=>{if(!(key in state))throw Error('Unknown control');state[key]=value;refresh();}};
+  go(location.hash.slice(1)||'OVERVIEW',false);
   fetch('/api/status').then(response=>response.ok?response.json():null).then(status=>{if(status?.openaiAvailable){const option=$('analysis-mode').querySelector('[value=openai]');option.disabled=false;option.textContent='OpenAI 문맥 분석 · 추출 텍스트 전송';}}).catch(()=>{});
 })();

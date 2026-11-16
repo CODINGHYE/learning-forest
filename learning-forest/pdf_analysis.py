@@ -1,5 +1,11 @@
 """Grounded concept extraction. Local mode is structural, not an LLM simulation."""
 import re
+from pathlib import Path
+
+PRINCIPLES_PATH = Path(__file__).resolve().parent.parent / 'docs/CONCEPT_MAP_PRINCIPLES.md'
+
+def read_principles():
+    return PRINCIPLES_PATH.read_text(encoding='utf-8') if PRINCIPLES_PATH.exists() else ''
 
 # key, name, evidence pattern, group, natural question, supplementary explanation, scene
 CATALOG = [
@@ -94,7 +100,8 @@ def assemble(nodes, groups, edges, pages, name, mode):
         node['page'] = node['evidence'][0]['page']
         node['kind'] = 'pdf'
     groups = [g for g in groups if any(n['group'] == g['id'] for n in nodes)]
-    return {'groups': groups, 'questions': nodes, 'edges': edges, 'document': {'name': name, 'pageCount': len(pages), 'conceptCount': len(nodes), 'mode': mode, 'analysisLabel': '로컬 구조 분석' if mode == 'local' else 'OpenAI 문맥 분석', 'notice': '원문에서 주제를 찾고, 검토된 쉬운 설명을 연결했습니다. 개념 간 연결은 학습을 돕는 보충 설명입니다.' if mode == 'local' else '추출한 텍스트를 OpenAI로 분석했습니다. 근거 구절과 페이지를 함께 확인하세요.', 'imageOnlyPages': [p['page'] for p in pages if len(p['text'].strip()) < 20]}}
+    version_match = re.search(r'버전:\s*([^\s]+)', read_principles())
+    return {'groups': groups, 'questions': nodes, 'edges': edges, 'document': {'name': name, 'pageCount': len(pages), 'conceptCount': len(nodes), 'principlesVersion': version_match.group(1) if version_match else 'unknown', 'mode': mode, 'analysisLabel': '로컬 구조 분석' if mode == 'local' else 'OpenAI 문맥 분석', 'notice': 'PDF의 텍스트에서 주제를 찾고 검토된 설명을 연결했습니다. 연결은 학습용 보충 설명이며, 이미지·도표의 해석은 원문에서 확인해주세요.' if mode == 'local' else '추출한 텍스트를 OpenAI로 분석했습니다. 근거 구절과 페이지를 함께 확인하세요.', 'lowTextPages': [p['page'] for p in pages if len(p['text'].strip()) < 20]}}
 
 
 def analyze_local(pages, name):
@@ -123,6 +130,8 @@ def analyze_headings(pages, name):
     for p in pages:
         lines = [compact(line) for line in p['text'].splitlines() if len(compact(line)) >= 4]
         if not lines:
+            continue
+        if lines[0].casefold() in {'목차', 'contents', 'table of contents'}:
             continue
         title = next((line for line in lines[:5] if len(line) <= 90 and not re.fullmatch(r'[\d\s.]+', line)), lines[0][:65])
         if title.casefold() in seen:
@@ -158,12 +167,17 @@ def normalize_ai_map(raw, pages, name):
     if not isinstance(raw.get('concepts'), list) or not 1 <= len(raw['concepts']) <= 40:
         raise ValueError('Invalid concept count')
     by_page = {p['page']:p['text'] for p in pages}
+    if not 1 <= len(raw.get('groups', [])) <= 5:
+        raise ValueError('Invalid group count')
     groups = [{'id':g['id'], 'title':g['title'], 'short':g['title'], 'intro':'PDF에서 분석한 개념을 살펴보세요.', 'preview':None} for g in raw['groups']]
     group_ids = {g['id'] for g in groups}
+    if len(group_ids) != len(groups):
+        raise ValueError('Duplicate group ID')
+    supported = {None} | {f'Q{g}.{n}' for g,count in [(1,3),(2,3),(3,4),(4,3)] for n in range(1,count+1)}
     nodes = []
     ids=set()
     for item in raw['concepts']:
-        if item['id'] in ids or item['groupId'] not in group_ids:
+        if item['id'] in ids or item['groupId'] not in group_ids or item['sceneId'] not in supported:
             raise ValueError('Invalid node')
         ids.add(item['id'])
         valid_pages = list(dict.fromkeys(p for p in item['pages'] if isinstance(p,int) and p in by_page))[:4]

@@ -59,7 +59,28 @@ def build_content(design, review):
              re.findall(r'^\| (Q\d+\.\d+) \| (Q\d+\.\d+) \| ([^|]+) \| ([^|]+) \|$', design, re.M)]
     if not edges or any(edge['from'] not in ids or edge['to'] not in ids for edge in edges):
         raise ValueError('Missing or invalid semantic relationships')
-    return {'groups': groups, 'questions': questions, 'edges': edges, 'version': '0.4.0'}
+    glossary_section = design.split('## 14. 문맥에 맞춰 보여주는 기초 용어 풀이', 1)[-1].split('\n## ',1)[0]
+    glossary = [[term.strip(),meaning.strip()] for term,meaning in re.findall(r'^\| ([^|]+) \| ([^|]+) \|$', glossary_section, re.M) if term.strip() not in {'용어', '---'}]
+    reviewed_section = design.split('## 15. PDF 지원 개념의 검토된 기본 풀이',1)[-1].split('\n## ',1)[0]
+    by_id = {q['id']:q for q in questions}
+    reviewed = {}
+    for name, ref, definition, purpose, example in re.findall(r'^\| ([^|]+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$',reviewed_section,re.M):
+        if name.strip() in {'개념 이름','---'}:
+            continue
+        name,ref,definition,purpose,example = [part.strip() for part in (name,ref,definition,purpose,example)]
+        if ref != '-':
+            if ref not in by_id:
+                raise ValueError('Invalid reviewed concept reference')
+            definition = by_id[ref]['definition'] if definition=='-' else definition
+            purpose = by_id[ref]['purpose'] if purpose=='-' else purpose
+        if any(value=='-' for value in (definition,purpose,example)) or name in reviewed:
+            raise ValueError('Incomplete or duplicate reviewed concept')
+        reviewed[name] = {'definition':definition,'purpose':purpose,'example':example}
+    relation_section = design.split('## 16. 지원 개념의 검토된 연결 이유',1)[-1].split('\n## ',1)[0]
+    reviewed_edges = [{'from':a.strip(),'to':b.strip(),'type':kind.strip(),'reason':reason.strip()} for a,b,kind,reason in re.findall(r'^\| ([^|]+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$',relation_section,re.M) if a.strip() not in {'시작 개념','---'}]
+    if len(reviewed)!=32 or any(edge['from'] not in reviewed or edge['to'] not in reviewed for edge in reviewed_edges):
+        raise ValueError('Invalid reviewed concept or relationship registry')
+    return {'groups': groups, 'questions': questions, 'edges': edges, 'glossary': glossary, 'reviewedConcepts':reviewed,'reviewedEdges':reviewed_edges,'version': '0.4.0'}
 
 
 def render(data):

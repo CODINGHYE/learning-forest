@@ -7,7 +7,7 @@ import threading
 import unittest
 from unittest.mock import patch
 from http.server import ThreadingHTTPServer
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -64,6 +64,13 @@ class PersonalConnectionTests(unittest.TestCase):
         self.assertEqual(request.method, 'GET')
         self.assertIsNone(request.data)
         self.assertEqual(request.headers['Authorization'], 'Bearer ' + KEY_A)
+
+    def test_sandbox_network_denial_is_not_misreported_as_bad_credentials(self):
+        with patch.object(server.urllib.request, 'urlopen', side_effect=URLError(OSError(10013, 'blocked'))), self.assertRaises(server.ApiError) as raised:
+            server.verify_openai_connection(KEY_A, 'gpt-4o-mini')
+        self.assertEqual(raised.exception.code, 'network_blocked')
+        self.assertIn('외부 연결 권한', str(raised.exception))
+        self.assertNotIn(KEY_A, str(raised.exception))
 
     def test_provider_errors_explain_permissions_model_and_limits_without_echoing_body(self):
         for status, code in [(403, 'permission_denied'), (404, 'model_unavailable'), (429, 'rate_or_quota_limit'), (500, 'upstream_error')]:

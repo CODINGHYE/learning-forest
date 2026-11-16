@@ -7,6 +7,7 @@
   function update(){
     const connected=status.connection.connected,server=status.serverOpenaiAvailable&&!blockedPersonal;
     $('openai-connection-status').textContent=connected?`내 키 연결됨 · ${status.connection.model} · 최대 1시간 동안 사용해요.`:server?'서버의 기본 OpenAI 연결을 사용할 수 있어요. 내 키로 바꿀 수도 있어요.':'개인 API 키를 연결해서 PDF 전체 개념지도를 만들어요.';
+    $('home-openai-status').textContent=$('openai-connection-status').textContent;$('home-openai-settings').textContent=connected?'✦ 내 OpenAI 연결 관리':'✦ 내 OpenAI 연결';
     $('openai-settings').textContent=connected?'내 OpenAI 연결 관리':'내 OpenAI 연결';document.querySelector('.connection-bar').classList.toggle('is-connected',connected);
     $('openai-disconnect').hidden=!connected;$('openai-current').hidden=!connected;
     $('openai-current').textContent=connected?`현재 연결: 내 API 키 · ${status.connection.model}. 키를 바꾸려면 새 키를 입력해주세요.`:'';
@@ -15,7 +16,7 @@
   async function refresh(){
     const current=++revision;
     try{const response=await fetch('/api/status',{cache:'no-store',credentials:'same-origin'});if(!response.ok)throw Error();const result=await response.json();if(current!==revision)return;if(status.connection.connected&&!result.connection?.connected){blockedPersonal=true;emit('forest:connection-expired');}status={...result,connection:result.connection||{connected:false}};update();}
-    catch{if(current===revision){$('openai-connection-status').textContent='개인 연결은 로컬 분석 서버에서 사용할 수 있어요.';}}
+    catch{if(current===revision){$('openai-connection-status').textContent='개인 연결은 로컬 분석 서버에서 사용할 수 있어요.';$('home-openai-status').textContent=$('openai-connection-status').textContent;}}
   }
   function setBusy(value){busy=value;['openai-key','openai-model','openai-close','openai-key-visibility','openai-connect-submit','openai-disconnect'].forEach(id=>$(id).disabled=value);$('openai-connect-submit').textContent=value?'연결 확인 중…':pendingName?'연결하고 선택한 PDF 분석':'연결하고 OpenAI 분석 선택';}
   function open(pdfName=''){
@@ -25,6 +26,7 @@
     $('openai-connect-submit').textContent=pdfName?'연결하고 선택한 PDF 분석':'연결하고 OpenAI 분석 선택';dialog.showModal();
   }
   $('openai-settings').addEventListener('click',()=>open());
+  $('home-openai-settings').addEventListener('click',()=>open());
   $('openai-close').addEventListener('click',()=>dialog.close());
   dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
   dialog.addEventListener('close',()=>{$('openai-key').value='';$('openai-key').type='password';if(!status.connection.connected)emit('forest:connect-cancelled');});

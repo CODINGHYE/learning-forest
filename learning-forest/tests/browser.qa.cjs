@@ -37,6 +37,19 @@ fs.mkdirSync(out, { recursive: true });
     };
     const ids = await page.evaluate(() => ForestContent.questions.map(q => q.id));
     assert.equal(ids.length, 13);
+    assert.ok(await page.locator('#start-screen').isVisible());
+    assert.ok(await page.locator('.app-layout').isHidden());assert.ok(await page.locator('.document-bar').isHidden());
+    for(const width of [1440,768,390,320]){await page.setViewportSize({width,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+    await page.setViewportSize({width:1440,height:1080});
+    await page.screenshot({path:path.join(out,'home-desktop.png')});
+    await page.setViewportSize({width:390,height:900});await page.screenshot({path:path.join(out,'home-mobile.png')});
+    const homeChooserPromise=page.waitForEvent('filechooser');await page.locator('#home-pdf-button').click();const homeChooser=await homeChooserPromise;await homeChooser.setFiles(path.join(out,'fixture-ml.pdf'));
+    await page.locator('#openai-dialog').waitFor({state:'visible'});assert.ok(await page.locator('#start-screen').isVisible());assert.ok(await page.locator('.app-layout').isHidden());
+    await page.locator('#openai-close').click();await page.waitForFunction(()=>document.querySelector('#home-analysis-progress').textContent.includes('전송하지 않았으며'));
+    await page.locator('#home-openai-settings').click();assert.ok(await page.locator('#openai-dialog').isVisible());await page.locator('#openai-close').click();
+    await page.locator('#home-demo-button').click();assert.ok(await page.locator('#start-screen').isHidden());assert.ok(await page.locator('.app-layout').isVisible());
+    await page.setViewportSize({width:1440,height:1080});
+    checked.push('separate minimal home at four widths; upload opens personal connection before sending; demo opens map');
     for (const id of ids) {
       await select(id);
       assert.equal((await snapshot()).selected, id);
@@ -140,6 +153,8 @@ fs.mkdirSync(out, { recursive: true });
       assert.ok(hierarchy.title>hierarchy.section&&hierarchy.section>hierarchy.body,'question/section/body type hierarchy at '+width);
       assert.ok(hierarchy.body>=17&&hierarchy.line>=hierarchy.body*1.85,'comfortable reading size and line spacing at '+width);
       assert.match(hierarchy.family,/NanumSquareRound/);
+      const groupBoxes=await page.locator('.group-link').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y};}));
+      assert.ok(groupBoxes.slice(1).every((box,i)=>width>600?box.x>groupBoxes[i].x:box.y>groupBoxes[i].y),'map must flow in one direction at '+width);
     }
     assert.deepEqual(await page.locator('#question-map').evaluate(node => [...node.children].map(child => child.className)),
       ['group', 'group', 'group', 'group', 'small-questions']);
@@ -205,8 +220,8 @@ fs.mkdirSync(out, { recursive: true });
     // Mock only the paid-AI browser boundary; Python tests exercise model verification,
     // isolated server sessions, credential routing, schema normalization and evidence.
     const aiMap={groups:[{id:'PG1',title:'예측을 어떻게 고칠까?',short:'예측과 수정',intro:'오차와 방향',preview:null}],
-      questions:[{id:'C-loss',group:'PG1',concept:'오차와 손실',title:'예측이 얼마나 틀렸을까?',explain:'예측과 정답의 차이가 오차입니다. 손실은 틀린 정도를 비교하는 숫자입니다.',purpose:'예측을 비교하고 고칠 기준을 정할 때 씁니다.',example:'예측 4와 정답 8의 차이를 비교해요.',kind:'pdf',sceneId:'Q3.1',page:1,source:'fixture-ml.pdf · PDF 1쪽',evidence:[{page:1,excerpt:'Loss function'}],next:['C-derivative']},
-      {id:'C-derivative',group:'PG1',concept:'미분',title:'어느 방향으로 바꿀까?',explain:'작은 변화가 결과에 주는 영향을 구합니다.',purpose:'손실을 줄일 방향을 알아볼 때 씁니다.',kind:'pdf',sceneId:'Q3.2',page:1,source:'fixture-ml.pdf · PDF 1쪽',evidence:[{page:1,excerpt:'gradient'}],next:[]}],
+      questions:[{id:'C-loss',group:'PG1',concept:'손실함수',title:'예측이 얼마나 틀렸을까?',explain:'손실은 음수를 최소화하려는 기준입니다.',purpose:'예측을 비교하고 고칠 기준을 정할 때 씁니다.',example:'예측 4와 정답 8의 차이를 비교해요.',kind:'pdf',sceneId:'Q3.1',page:1,source:'fixture-ml.pdf · PDF 1쪽',evidence:[{page:1,excerpt:'Loss function'}],next:['C-derivative']},
+      {id:'C-derivative',group:'PG1',concept:'미분과 변화율',title:'어느 방향으로 바꿀까?',explain:'작은 변화가 결과에 주는 영향을 구합니다.',purpose:'손실을 줄일 방향을 알아볼 때 씁니다.',kind:'pdf',sceneId:'Q3.2',page:1,source:'fixture-ml.pdf · PDF 1쪽',evidence:[{page:1,excerpt:'gradient'}],next:[]}],
       edges:[{from:'C-loss',to:'C-derivative',type:'줄일 방향 찾기',reason:'손실은 틀린 정도를 나타내고, 미분은 그 손실을 줄일 방향을 알아보는 데 쓰입니다.'}],
       document:{name:'fixture-ml.pdf',pageCount:1,conceptCount:2,mode:'openai',analysisLabel:'OpenAI 문맥 분석',summary:'예측이 얼마나 틀렸는지 재고 그 값을 줄이는 방법을 연결합니다.',notice:'모의 AI 응답 UI 검사'}};
     await page.route('**/api/analyze-pdf',route=>{const headers=route.request().headers();assert.equal(headers['x-analysis-mode'],'openai');assert.equal(headers['x-openai-source'],'personal');assert.ok(!JSON.stringify(headers).includes(fakeKey));assert.ok(!route.request().postDataBuffer().includes(Buffer.from(fakeKey)));return route.fulfill({contentType:'application/json',body:JSON.stringify(aiMap)});});
@@ -216,24 +231,37 @@ fs.mkdirSync(out, { recursive: true });
     assert.match(await page.locator('#forest-summary-text').innerText(),/틀렸는지 재고/);
     await page.locator('#concept-overview a[href="#C-loss"]').click();
     assert.ok(await page.locator('#visualization-panel').isHidden());
-    assert.match(await page.locator('#easy-explanation').innerText(),/정답의 차이/);
-    assert.match(await page.locator('#concept-purpose').innerText(),/고칠 기준/);
-    assert.match(await page.locator('.connections').innerText(),/그 손실을 줄일 방향/);
-    await page.locator('#forest-network .network-mobile-relation button').click();
+    assert.match(await page.locator('#easy-explanation').innerText(),/예측.*정답.*차이/);
+    assert.doesNotMatch(await page.locator('#easy-explanation').innerText(),/음수를 최소화/);
+    assert.match(await page.locator('#concept-purpose').innerText(),/비교할 때/);
+    assert.match(await page.locator('.connections').innerText(),/어느 방향/);
+    assert.match(await page.locator('#takeaway').innerText(),/검토된 기초 풀이/);
+    assert.ok(await page.locator('.terms-details').evaluate(node=>node.open),'PDF jargon help should be visible');
+    assert.ok((await page.locator('.term-list dt').allTextContents()).includes('손실'));
+    assert.doesNotMatch(await page.locator('.terms-details summary').innerText(),/실험에서/);
+    assert.match(await page.locator('#source-content .source-note').innerText(),/검토한 기초 풀이/);
+    assert.doesNotMatch(await page.locator('#source-content .source-note').innerText(),/로컬 구조/);
+    assert.ok(await page.locator('#forest-network').isHidden());
+    await page.locator('.connections a[href="#C-derivative"]').click();
     assert.equal((await snapshot()).selected,'C-derivative');assert.ok(await page.locator('#visualization-panel').isHidden());
     await page.locator('.connections a[href="#C-loss"]').click();
     assert.equal((await snapshot()).selected,'C-loss');assert.ok(await page.locator('#visualization-panel').isHidden());
     await page.locator('#visualization-button').click();assert.ok(await page.locator('.experiment').isVisible());
+    await page.locator('#home-nav-button').click();assert.ok(await page.locator('#start-screen').isVisible());assert.ok(await page.locator('#home-resume-button').isVisible());
+    await page.locator('#home-resume-button').click();assert.equal((await snapshot()).document.mode,'openai');assert.equal(prematureUploads,1,'resume must not analyze or charge again');
     await page.reload();await page.waitForFunction(()=>!!window.ForestApp);await page.evaluate(()=>ForestConnection.ready);
     assert.match(await page.locator('#openai-connection-status').innerText(),/내 키 연결됨/);
     assert.ok(!(await page.evaluate(()=>JSON.stringify([localStorage,sessionStorage])+document.cookie)).includes(fakeKey));
     await page.route('**/api/openai/disconnect',route=>{mockConnected=false;return route.fulfill({contentType:'application/json',body:'{"connected":false}'});});
-    await page.locator('#openai-settings').click();assert.equal(await page.locator('#openai-key').inputValue(),'');
+    await page.locator('#home-nav-button').click();await page.locator('#home-openai-settings').click();assert.equal(await page.locator('#openai-key').inputValue(),'');
     await page.locator('#openai-disconnect').click();await page.locator('#openai-dialog').waitFor({state:'hidden'});
     assert.doesNotMatch(await page.locator('#openai-connection-status').innerText(),/내 키 연결됨/);
     for(const route of ['**/api/status','**/api/openai/connect','**/api/openai/disconnect','**/api/analyze-pdf'])await page.unroute(route);
     page.off('request',observeUpload);
+    await page.locator('#home-demo-button').click();
     checked.push('mocked personal AI connect failure/success, PDF-first queue, summary/purpose/semantic relations, refresh/disconnect, no key in storage or PDF request');
+    checked.push('contextual reviewed vocabulary appears before visualization and AI/local source labels are distinct');
+    checked.push('one-direction desktop/mobile map, separate home/map navigation and resume without re-analysis');
     await page.locator('#analysis-mode').selectOption('local');
     await page.locator('#pdf-file').setInputFiles(path.join(out, 'fixture-ml.pdf'));
     await page.waitForFunction(() => ForestApp.snapshot().document?.mode === 'local');

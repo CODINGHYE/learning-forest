@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="typography.css">
   <link rel="stylesheet" href="connection.css">
   <link rel="stylesheet" href="forest.css">
+  <link rel="stylesheet" href="journey.css">
   <script defer src="math.js"></script>
   <script defer src="content.js"></script>
   <script defer src="scene.js"></script>
@@ -25,9 +26,17 @@
 </head>
 <body>
   <a class="skip-link" href="#lesson">학습 내용으로 이동</a>
+  <main id="start-screen" class="start-screen" tabindex="-1" hidden>
+    <div class="start-content"><img class="start-guide" src="guide.svg" width="96" height="96" alt=""><h1>배움의 숲</h1><p class="start-tagline">오늘의 PDF, 하나의 이해로.</p><p class="start-description">개념의 뜻과 이어지는 이유를<br>한 방향의 지도로 살펴보세요.</p>
+      <button id="home-pdf-button" class="home-upload" type="button"><span class="upload-icon" aria-hidden="true">＋</span><span><strong>수업 PDF 올리기</strong><small>파일을 고르거나 이곳에 놓아주세요</small></span><span class="upload-arrow" aria-hidden="true">→</span></button>
+      <div class="home-connection"><button id="home-openai-settings" class="button" type="button"><span aria-hidden="true">✦</span> 내 OpenAI 연결</button><p id="home-openai-status" role="status">개인 API 키를 연결해 시작해요.</p></div>
+      <p id="home-analysis-progress" class="home-analysis-progress" role="status" hidden></p>
+      <div class="home-secondary"><button id="home-resume-button" class="text-button" type="button" hidden>만든 지도 이어보기 →</button><button id="home-demo-button" class="text-button" type="button">먼저 예시 지도 살펴보기</button></div><p class="start-footnote">PDF 최대 30MB · 연결한 OpenAI로 분석해요</p>
+    </div>
+  </main>
   <header class="site-header">
     <a class="brand" href="#OVERVIEW"><span class="brand-mark" aria-hidden="true"><svg width="44" height="44" viewBox="0 0 64 64" fill="none"><rect x="12" y="8" width="42" height="47" rx="12" fill="#4263DF"/><path d="M21 9v45" stroke="#253EA3" stroke-width="3"/><path d="M41 8v16l-5-4-5 4V8" fill="#FFC66B"/><circle cx="31" cy="33" r="2.5" fill="white"/><circle cx="44" cy="33" r="2.5" fill="white"/><path d="M33 42q5 5 10-1" stroke="white" stroke-width="3" stroke-linecap="round"/><path d="m8 35-4-5m52 9 5-5" stroke="#4263DF" stroke-width="4" stroke-linecap="round"/></svg></span><span>배움의 숲<small>질문 하나씩, 이해가 쑥쑥!</small></span></a>
-    <div class="header-actions"><div class="learning-progress" aria-label="직접 이해했다고 표시한 질문의 비율"><div><strong id="progress-text">0% 이해 표시</strong><span id="progress-count">0 / 13개 질문</span></div><div class="progress-track"><span id="progress-fill"></span></div></div><button class="button primary" id="pdf-button" type="button"><span aria-hidden="true">＋</span> PDF로 개념지도 만들기</button><input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden></div>
+    <div class="header-actions"><button id="home-nav-button" class="button subtle" type="button">← 시작 화면</button><div class="learning-progress" aria-label="직접 이해했다고 표시한 질문의 비율"><div><strong id="progress-text">0% 이해 표시</strong><span id="progress-count">0 / 13개 질문</span></div><div class="progress-track"><span id="progress-fill"></span></div></div><button class="button primary" id="pdf-button" type="button"><span aria-hidden="true">＋</span> 새 PDF 올리기</button><input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden></div>
   </header>
   <section class="document-bar" aria-label="학습할 PDF와 분석 방식">
     <div><span class="section-kicker">현재 학습 자료</span><strong id="document-name">딥러닝 기초 · 13개 질문 예시 지도</strong><p id="analysis-notice">위의 PDF 버튼에서 파일을 고르면 내용을 분석해 새 개념지도를 만듭니다.</p></div>
@@ -50,8 +59,8 @@
   </dialog>
   <div class="app-layout">
     <section class="map-sidebar" aria-label="질문 지도">
-      <div class="map-card-heading"><div class="map-intro"><img class="guide-character" src="guide.svg" width="115" height="115" alt=""><div class="sidebar-heading"><span class="eyebrow">나의 배움 지도</span><h1>어떤 개념들이, 어떻게 이어질까?</h1><p>처음엔 몰라도 괜찮아요.<br>전체 숲을 본 뒤, 궁금한 개념을 골라보세요.</p></div></div><button id="overview-button" class="button subtle overview-button" type="button">전체 개념지도 보기 ↗</button></div>
-      <div id="forest-summary" class="forest-summary"><span class="section-kicker">이 PDF가 다루는 큰 숲</span><p id="forest-summary-text"></p></div><div id="forest-network"></div><div class="map-guide"><span id="map-count">4개 큰 질문 · 13개 세부 질문</span><div class="map-legend"><span><i class="legend-dot selected-dot"></i>선택한 묶음</span><span><i class="legend-dot complete-dot"></i>직접 이해 표시</span></div></div>
+      <div class="map-card-heading"><div class="map-intro"><img class="guide-character" src="guide.svg" width="100" height="100" alt=""><div class="sidebar-heading"><span class="eyebrow">한 방향으로 이어보는 개념지도</span><h1>큰 흐름을 보고, 하나씩 이해해요.</h1><p>화살표 방향으로 큰 흐름을 살펴보고,<br>궁금한 개념을 골라보세요.</p></div></div><button id="overview-button" class="button subtle overview-button" type="button">전체 개념지도 보기 ↗</button></div>
+      <div id="forest-summary" class="forest-summary"><span class="section-kicker">이 PDF가 다루는 큰 숲</span><p id="forest-summary-text"></p></div><div id="forest-network" hidden></div><div class="map-guide"><span id="map-count">4개 큰 질문 · 13개 세부 질문</span><div class="map-legend"><span><i class="legend-dot selected-dot"></i>선택한 묶음</span><span><i class="legend-dot complete-dot"></i>직접 이해 표시</span></div></div>
       <nav id="question-map" aria-label="큰 질문과 세부 질문"></nav>
       <div class="map-footnote"><p>이해를 돕는 흐름이에요. 기술의 발명 순서나 반드시 따라야 하는 순서는 아닙니다.</p><label for="question-filter">세부 질문 보기 <select id="question-filter"><option value="all">모든 질문</option><option value="remaining">더 살펴볼 질문</option><option value="understood">이해 표시한 질문</option></select></label></div>
     </section>
@@ -63,6 +72,7 @@
       <section id="concept-reading" class="reading-card" hidden><div class="section-heading"><span class="step-badge">↗</span><div><h3>원문도 함께 확인해요</h3><p>아래 쉬운 설명과 연결의 이유를 읽고, 실제 교재의 문장과 비교할 수 있어요.</p></div></div><button id="evidence-button" class="button" type="button">이 개념의 PDF 근거 바로 보기</button></section>
       <div id="understanding-grid" class="understanding-grid"><div><section class="explanation" aria-labelledby="explain-label"><div class="section-heading"><span class="step-badge">1</span><div><h3 id="explain-label">쉬운 설명 · 이 개념은 무엇인가요?</h3><p>먼저 뜻을 이해하고, 언제 필요한지 살펴봐요.</p></div></div><div id="easy-explanation"></div><div id="concept-purpose" class="purpose-card" hidden><h4>언제, 무엇을 위해 필요한가요?</h4><p id="concept-purpose-text"></p></div><div id="concept-example" class="purpose-card example-card" hidden><h4>쉬운 상황으로 생각해보기</h4><p id="concept-example-text"></p></div></section><div id="extra-content"></div></div><section id="learning-note" class="learning-note" aria-labelledby="note-title" hidden><span class="note-icon" aria-hidden="true">✎</span><h3 id="note-title">나만의 학습 메모</h3><p>이 개념이 다른 개념과 이어지는 이유를 내 말로 남겨보세요.</p><label class="sr-only" for="note-input">선택한 질문의 개인 학습 메모</label><textarea id="note-input" rows="5" maxlength="6000" placeholder="이 개념은 무엇을 하고, 어떤 개념과 어떻게 이어지나요?"></textarea><div class="note-actions"><span id="note-status" role="status"></span><button id="save-note" class="button primary" type="button">메모 저장</button></div><small>메모와 이해 표시는 이 브라우저에만 저장됩니다.</small></section></div>
       <section class="connections" aria-labelledby="connections-title"><h3 id="connections-title">2. 다른 개념과 어떻게 이어지나요?</h3><p id="connection-reason"></p><div id="next-questions"></div></section>
+      <section id="forest-reading-route" class="reading-route" hidden></section>
       <section id="visualization-launch" class="visualization-launch" hidden><div><span class="section-kicker">선택해서 보는 시각화</span><h3>글만으로 헷갈릴 때, 그림으로 살펴봐요.</h3><p id="visualization-description"></p></div><button id="visualization-button" class="button primary" type="button" aria-expanded="false" aria-controls="visualization-panel">3D 예시로 이해하기</button></section>
       <div id="visualization-panel" hidden><div class="prediction-box"><span class="section-kicker">먼저 예상해보기</span><p id="prediction" class="prediction"></p></div><div id="visualization-network"></div>
       <div id="experiment-heading" class="section-heading"><span class="step-badge">3</span><div><h3>직접 바꿔보는 3D 실험</h3><p id="experiment-instruction"></p></div></div>

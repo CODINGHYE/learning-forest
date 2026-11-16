@@ -17,7 +17,7 @@ sys.path.insert(0, str(APP / 'scripts'))
 from build_content import build_content
 from pdf_fixtures import GENERAL_TEXT, make_pdf
 import server
-from pdf_analysis import analyze_local, normalize_ai_map
+from pdf_analysis import analyze_local, normalize_ai_map, evidence_anchors, make_schema, source_concept_plan
 
 
 class ContentContractTests(unittest.TestCase):
@@ -85,6 +85,67 @@ class AiBoundaryTests(unittest.TestCase):
         self.assertEqual(result['questions'][0]['page'], 1)
         self.assertEqual(result['questions'][0]['sceneId'], 'Q3.4')
 
+    def test_long_course_requires_all_source_detected_topics(self):
+        text = 'Machine learning. Supervised learning. Regression. Classification. Perceptron uses weights and bias. Activation function ReLU. MLP connects layers. Forward propagation makes predictions. Loss function MSE. Derivative and chain rule. Backpropagation. Gradient descent learning rate. Epoch. PyTorch tensor autograd.'
+        pages = [{'page':i, 'text':text} for i in range(1,21)]
+        plan = source_concept_plan(pages, 'course.pdf')
+        self.assertGreaterEqual(len(plan['concepts']), 16)
+        self.assertLessEqual(len(plan['concepts']), 32)
+        titles = {node['title'] for node in plan['concepts'].values()}
+        self.assertTrue({'손실함수','미분과 변화율','역전파','경사하강법','자동미분'} <= titles)
+        anchors = evidence_anchors(pages)
+        schema = make_schema(anchors, plan=plan, anchors=anchors)
+        self.assertEqual(set(schema['properties']['concepts']['required']), set(plan['concepts']))
+        raw = {'summary':'A course on learning.', 'groups':{gid:{'id':gid,'title':title} for gid,title in plan['groups'].items()}, 'concepts':{}, 'edges':[]}
+        for node_id, seed in plan['concepts'].items():
+            evidence_id = schema['properties']['concepts']['properties'][node_id]['properties']['evidenceId']['enum'][0]
+            raw['concepts'][node_id] = {'id':node_id,'groupId':seed['group'],'title':seed['title'],'question':'How does it help?','description':seed['meaning'],'purpose':'Used to understand the computation.','example':'A small learning example.','evidenceId':evidence_id,'sceneId':seed['sceneId']}
+        result = normalize_ai_map(raw, pages, 'course.pdf', anchors=anchors, plan=plan)
+        self.assertEqual(len(result['questions']), len(plan['concepts']))
+        raw['concepts'].pop(next(iter(raw['concepts'])))
+        with self.assertRaisesRegex(ValueError, 'Missing planned concepts'):
+            normalize_ai_map(raw, pages, 'course.pdf', anchors=anchors, plan=plan)
+
+    def test_short_or_other_subject_has_no_forced_ml_plan(self):
+        self.assertIsNone(source_concept_plan(self.pages, 'short.pdf'))
+        self.assertIsNone(source_concept_plan([{'page':i,'text':'Gardening soil and flowers.'} for i in range(1,21)],'garden.pdf'))
+
+    def test_numbered_evidence_uses_actual_source_and_rejects_invented_id(self):
+        anchors = evidence_anchors(self.pages)
+        raw = copy.deepcopy(self.raw)
+        raw['concepts'][0].pop('pages')
+        raw['concepts'][0].pop('evidenceQuote')
+        raw['concepts'][0]['evidenceId'] = 'P1S1'
+        result = normalize_ai_map(raw, self.pages, 'fixture.pdf', anchors=anchors)
+        self.assertEqual(result['questions'][0]['evidence'][0]['excerpt'], self.pages[0]['text'])
+        self.assertEqual(result['document']['groundingMethod'], 'numbered_source_spans')
+        schema = make_schema(anchors)['properties']['concepts']['items']
+        self.assertEqual(schema['properties']['evidenceId']['enum'], ['P1S1'])
+        self.assertNotIn('evidenceQuote', schema['properties'])
+        raw['concepts'][0]['evidenceId'] = 'P999S1'
+        with self.assertRaises(ValueError):
+            normalize_ai_map(raw, self.pages, 'fixture.pdf', anchors=anchors)
+
+    def test_pdf_whitespace_is_matched_but_excerpt_is_actual_source(self):
+        pages = [{'page': 1, 'text': 'Gradient\n descent changes\nparameters using gradients.'}]
+        result = normalize_ai_map(self.raw, pages, 'fixture.pdf')
+        self.assertEqual(result['questions'][0]['evidence'][0]['excerpt'], 'Gradient descent changes parameters')
+        raw = copy.deepcopy(self.raw)
+        raw['concepts'][0]['evidenceQuote'] = 'Gradientdescentchangesparameters'
+        result = normalize_ai_map(raw, pages, 'fixture.pdf')
+        self.assertEqual(result['questions'][0]['evidence'][0]['excerpt'], 'Gradient descent changes parameters')
+        self.assertEqual(result['document']['groundingCorrections'][0]['type'], 'layout_whitespace')
+
+    def test_wrong_valid_page_is_corrected_only_by_literal_match(self):
+        pages = [{'page': 1, 'text': 'A different introductory page.'}, self.pages[0] | {'page': 2}]
+        result = normalize_ai_map(self.raw, pages, 'fixture.pdf')
+        self.assertEqual(result['questions'][0]['page'], 2)
+        self.assertEqual(result['document']['groundingCorrections'][0]['type'], 'page')
+        raw = copy.deepcopy(self.raw)
+        raw['concepts'][0]['evidenceQuote'] = 'Gradient descent never changes parameters'
+        with self.assertRaises(ValueError):
+            normalize_ai_map(raw, pages, 'fixture.pdf')
+
     def test_unfounded_evidence_and_invalid_ids_are_rejected(self):
         for changes in ({'pages': [99]}, {'evidenceQuote': 'invented evidence'}, {'groupId': 'missing'}):
             raw = copy.deepcopy(self.raw)
@@ -126,6 +187,18 @@ class AiBoundaryTests(unittest.TestCase):
              patch.object(server.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(payload).encode())), \
              self.assertRaises(ValueError):
             server.analyze_openai(self.pages, 'fixture.pdf')
+
+    def test_rejected_evidence_reports_the_concept_without_exposing_key(self):
+        raw = copy.deepcopy(self.raw)
+        raw['concepts'][0]['evidenceQuote'] = 'a fabricated quote not on this page'
+        payload = {'output': [{'content': [{'type': 'output_text', 'text': json.dumps(raw)}]}]}
+        with patch.dict(os.environ, {'OPENAI_API_KEY': 'fixture-private-key'}), \
+             patch.object(server.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(payload).encode())), \
+             self.assertRaises(server.ApiError) as raised:
+            server.analyze_openai(self.pages, 'fixture.pdf')
+        self.assertEqual(raised.exception.code, 'unverified_evidence')
+        self.assertIn('Gradient descent', str(raised.exception))
+        self.assertNotIn('fixture-private-key', str(raised.exception))
 
 
 class HttpTests(unittest.TestCase):

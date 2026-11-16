@@ -1,0 +1,16 @@
+# Local state, source materials and generated verification evidence
+tmp/
+.openai/
+**/.openai/
+.sites/
+**/.sites/
+.env
+.env.*
+!.env.example
+!**/.env.example
+**/__pycache__/
+*.py[cod]
+**/node_modules/
+**/.venv/
+**/qa-output/
+*.tar.gz

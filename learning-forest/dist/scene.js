@@ -67,7 +67,7 @@
       }
       const occupied=[];this.labelBounds=[];
       for(const c of labels){
-        const fs=Math.max(this.w<400?12:13,Math.min(c.size||13,15)),offset=c.offset||[0,0];ctx.font=`${fs}px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+        const fs=Math.max(this.w<400?13:14,Math.min(c.size||14,16)),offset=c.offset||[0,0];ctx.font=`${fs}px "NanumSquareRound", "Malgun Gothic", sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
         const lines=String(c.text).split('\n'),width=Math.max(...lines.map(s=>ctx.measureText(s).width)),pad=c.plate?5:0;
         let x=Math.max(width/2+8,Math.min(this.w-width/2-8,c.p.x+offset[0])),y=Math.max(16,Math.min(this.h-22-(lines.length-1)*16,c.p.y+offset[1]));
         const overlaps=(xx,yy)=>occupied.some(r=>xx-width/2-5<r.right&&xx+width/2+5>r.left&&yy-11<r.bottom&&yy+lines.length*16>r.top);

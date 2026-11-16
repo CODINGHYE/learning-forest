@@ -13,7 +13,15 @@ python learning-forest/server.py --port 4173
 
 이 폴더에서 실행한다면 `python server.py --port 4173`이다. Python 실행 경로는 환경에 맞게 사용한다. `http://127.0.0.1:4173`은 이 PC에서만 접근할 수 있다.
 
-PDF 분석은 이 서버가 필요하다. `python -m http.server --directory dist` 같은 정적 서버는 예시 화면만 제공하며 PDF 분석 API를 제공하지 않는다.
+PDF 분석은 이 서버가 필요하다. `dist/index.html`을 파일로 직접 여는 대신 위 로컬 주소를 사용한다. `python -m http.server --directory dist` 같은 정적 서버는 예시 화면만 제공하며 PDF 분석 API를 제공하지 않는다.
+
+## 지도와 개인 학습 기록
+
+상단 큰 질문에서 세부 질문을 고르면 아래 상세 카드의 3D 실험·쉬운 설명으로 이동한다. 이전·다음 질문 이동과 직접 이해 표시를 제공한다. 진도는 직접 이해 표시한 질문의 비율이며 객관적 평가가 아니다.
+
+메모와 이해 표시는 PDF 내용으로 구분해 이 브라우저의 localStorage에 저장한다. 브라우저 데이터를 지우면 사라지며 다른 기기와 동기화하지 않는다. 업로드한 PDF의 원문은 저장소에 보관하지 않는다. 저장이 막히면 현재 페이지 세션 동안 유지하고 화면에서 알린다.
+
+둥근 한글 글꼴은 로컬 `dist/fonts/`의 나눔스퀘어라운드 400·700·800이다. 출처와 OFL은 같은 폴더에 보존한다. 전체 배치는 `roadmap.css`, 역할별 글자 크기·색·굵기는 `typography.css`에서 관리한다.
 
 ## PDF 분석과 데이터 흐름
 
@@ -38,6 +46,6 @@ PDF 분석은 이 서버가 필요하다. `python -m http.server --directory dis
 
 ## 현재 상태
 
-기능별 설계·구현·검증 상태는 [STATUS](../docs/STATUS.md), 이번 적용 결과는 [HARNESS-001](../docs/plans/HARNESS-001.md)이 기준이다. 과거 `qa-output/report.json`은 이전 화면의 기록이다. 현재 근거는 통합 실행이 생성한 `qa-output/verification.json`이다.
+기능별 설계·구현·검증 상태는 [STATUS](../docs/STATUS.md), 최근 디자인 적용은 [DESIGN-001](../docs/plans/DESIGN-001.md), 검증 운영은 [HARNESS-001](../docs/plans/HARNESS-001.md)이 기준이다. 과거 `qa-output/report.json`은 이전 화면의 기록이다. 현재 근거는 통합 실행이 생성한 `qa-output/verification.json`이다.
 
 배포·공유 링크 생성·외부 접속 검증은 보류 중이다. 호스팅 메타데이터는 로컬 `.openai/hosting.json`에 보존하며 현재 배포 완료로 보고하지 않는다.

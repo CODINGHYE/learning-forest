@@ -24,6 +24,40 @@
   const stage=new ForestStage($('scene'));
   const expandedGroups=new Set();
   let selected='Q1.1',group=content.groups[0],q=questions.get(selected),state={},timer=null,pdfUrl=null,pdfName='',analysisRequest=null;
+  const learningScopes=new Map(),noteDrafts=new Map();
+  let learningScope='',learningRecords=new Map(),storageAvailable=true;
+  function ensureLearning(){
+    const identity=JSON.stringify([content.document?.name||'demo-v1',content.questions.map(item=>[item.id,item.title,item.source,item.evidence])]);
+    let hash=2166136261;for(let i=0;i<identity.length;i++)hash=Math.imul(hash^identity.charCodeAt(i),16777619);
+    const scope='forest-learning-v1:'+identity.length+':'+(hash>>>0).toString(16);
+    if(scope===learningScope)return;learningScope=scope;
+    if(!learningScopes.has(scope)){
+      const records=new Map();
+      try{const data=JSON.parse(localStorage.getItem(scope)||'{}');if(data&&typeof data==='object'&&!Array.isArray(data))Object.entries(data).forEach(([id,value])=>{if(value&&typeof value==='object')records.set(id,{understood:value.understood===true,note:typeof value.note==='string'?value.note.slice(0,6000):''});});}catch{storageAvailable=false;}
+      learningScopes.set(scope,records);
+    }
+    learningRecords=learningScopes.get(scope);
+  }
+  function learningRecord(id){return learningRecords.get(id)||{understood:false,note:''};}
+  function saveLearning(){try{localStorage.setItem(learningScope,JSON.stringify(Object.fromEntries(learningRecords)));storageAvailable=true;return true;}catch{storageAvailable=false;return false;}}
+  function renderProgress(){
+    const total=content.questions.length,done=content.questions.filter(item=>learningRecord(item.id).understood).length,percent=Math.round(done/total*100);
+    $('progress-text').textContent=`${percent}% 이해 표시`;$('progress-count').textContent=`${done} / ${total}개 질문`;$('progress-fill').style.width=percent+'%';
+    document.querySelector('.learning-progress').title=storageAvailable?'직접 이해했다고 표시한 질문의 비율입니다.':'브라우저 저장을 사용할 수 없어 이 화면을 여는 동안만 유지됩니다.';
+    $('map-count').textContent=`${content.groups.length}개 큰 질문 · ${total}개 세부 질문`;
+  }
+  function renderStudyTools(){
+    renderProgress();const index=q?content.questions.indexOf(q):-1;
+    $('detail-position').textContent=q?`질문 ${String(index+1).padStart(2,'0')} / ${content.questions.length}`:group.id==='OVERVIEW'?'전체 개념지도':'선택한 큰 질문';
+    ['review-toggle','previous-question','next-question','learning-note'].forEach(id=>$(id).hidden=!q);
+    $('understanding-grid').hidden=!q;
+    if(!q)return;
+    const record=learningRecord(q.id),key=learningScope+'/'+q.id;
+    $('review-toggle').setAttribute('aria-pressed',String(record.understood));$('review-toggle').textContent=record.understood?'✓ 이해했어요 · 표시 해제':'이 질문 이해했어요';
+    $('previous-question').disabled=index===0;$('next-question').disabled=index===content.questions.length-1;
+    $('note-input').value=noteDrafts.has(key)?noteDrafts.get(key):record.note;
+    $('note-status').textContent=!storageAvailable?'브라우저 저장을 사용할 수 없어요.':noteDrafts.has(key)?'저장 전 메모':record.note?'저장된 메모':'';
+  }
   function sceneId(){return q?(q.sceneId||(!q.kind?q.id:null)):group.preview;}
   function review(){return q?(q.review?.instruction?q.review:(demoContent.questions.find(item=>item.id===sceneId())?.review||{})):{};}
   const maxSteps=()=>!q?1:({'Q1.1':1,'Q1.2':1,'Q1.3':2,'Q2.1':1,'Q2.2':2,'Q2.3':1,'Q3.1':2,'Q3.2':5,'Q3.3':4,'Q3.4':8,'Q4.1':2,'Q4.2':5,'Q4.3':4}[sceneId()]);
@@ -32,22 +66,24 @@
   function go(id,push=true){
     stop();selected=id==='OVERVIEW'||questions.has(id)||content.groups.some(g=>g.id===id)?id:'OVERVIEW';q=questions.get(selected)||null;group=selected==='OVERVIEW'?{id:'OVERVIEW',short:'전체 개념지도',title:content.document?content.document.name:'딥러닝 기초 · 전체 개념지도',intro:'큰 흐름에서 궁금한 개념을 선택하세요.',preview:null}:content.groups.find(g=>g.id===(q?q.group:selected));state=initialState();stage.resetCamera();
     if(push)history.pushState(null,'','#'+selected);
-    renderNavigation();renderLesson();
-    if(push&&q&&matchMedia('(max-width:680px)').matches)$('lesson').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'});
+    ensureLearning();renderNavigation();renderLesson();renderStudyTools();
+    if(push&&q)$('lesson').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'});
   }
   function navLink(id,cls,text){const a=el('a',cls,text);a.href='#'+id;a.addEventListener('click',e=>{e.preventDefault();go(id);});return a;}
   function renderNavigation(){
-    const nav=$('question-map');nav.replaceChildren();let mobileQuestions=null;
+    const nav=$('question-map');nav.replaceChildren();nav.style.setProperty('--group-count',content.groups.length);nav.classList.toggle('many-groups',content.groups.length>4);let activeQuestions=null;
     content.groups.forEach((g,i)=>{
-      const wrapper=el('div','group'),a=navLink(g.id,'group-link','');a.setAttribute('aria-current',String(group.id===g.id));a.append(el('span','group-number',String(i+1)),el('span','',g.title));wrapper.append(a);nav.append(wrapper);
-      if(group.id===g.id){const list=el('ol','small-questions'),all=content.questions.filter(item=>item.group===g.id);let visible=all;if(all.length>5&&!expandedGroups.has(g.id)){visible=all.slice(0,4);if(q&&q.group===g.id&&!visible.includes(q))visible.push(q);}visible.forEach(item=>{const li=el('li'),link=navLink(item.id,'question-link','');if(item.id===selected)link.setAttribute('aria-current','page');if(item.concept)link.append(el('span','concept-name',item.concept));else link.append(el('span','qid',item.id.replace('Q','')));link.append(el('span','',item.title));li.append(link);list.append(li);});if(visible.length<all.length){const li=el('li');li.append(button(`이 묶음의 개념 ${all.length}개 모두 보기`,()=>{expandedGroups.add(g.id);renderNavigation();},'button map-expand'));list.append(li);}if(matchMedia('(max-width:680px)').matches)mobileQuestions=list;else wrapper.append(list);}
+      const all=content.questions.filter(item=>item.group===g.id),done=all.filter(item=>learningRecord(item.id).understood).length;
+      const wrapper=el('div','group'),a=navLink(g.id,'group-link',''),label=el('span','group-label');a.setAttribute('aria-current',String(group.id===g.id));label.append(el('span','group-step',`STEP ${String(i+1).padStart(2,'0')}`),el('strong','group-title',g.short||g.title),el('span','group-full-title',g.title),el('span','group-meta',`${all.length}개 질문${done?' · ✓ '+done+'개 이해 표시':''}`));a.append(el('span','group-number',String(i+1)),label);wrapper.append(a);nav.append(wrapper);
+      if(group.id===g.id){const list=el('ol','small-questions'),filter=$('question-filter').value,filtered=all.filter(item=>filter==='all'||learningRecord(item.id).understood===(filter==='understood'));let visible=filtered;if(filtered.length>5&&!expandedGroups.has(g.id)){visible=filtered.slice(0,4);if(q&&filtered.includes(q)&&!visible.includes(q))visible.push(q);}visible.forEach(item=>{const li=el('li'),link=navLink(item.id,'question-link','');if(item.id===selected)link.setAttribute('aria-current','page');link.append(el('span','qid',learningRecord(item.id).understood?'✓ 이해 표시':item.concept||item.id.replace('Q','')),el('span','',item.title));li.append(link);list.append(li);});if(visible.length<filtered.length){const li=el('li');li.append(button(`이 묶음의 개념 ${filtered.length}개 모두 보기`,()=>{expandedGroups.add(g.id);renderNavigation();},'button map-expand'));list.append(li);}if(!filtered.length)list.append(el('li','filter-empty',filter==='understood'?'이 묶음에는 아직 이해 표시한 질문이 없어요.':'이 묶음의 모든 질문에 이해 표시했어요.'));activeQuestions=list;}
     });
-    if(mobileQuestions)nav.append(mobileQuestions);
+    if(activeQuestions){activeQuestions.setAttribute('aria-label',group.title+'의 세부 질문');nav.append(activeQuestions);}
+    $('question-filter').disabled=group.id==='OVERVIEW';
   }
   function renderLesson(){
     $('breadcrumb').textContent=`${content.document?'업로드한 PDF':'예시 지도'} / ${group.short}${q?' / '+(q.concept||q.id.replace('Q','')):''}`;
     $('question-title').textContent=q?q.title:group.title;
-    const r=review(),hasScene=!!sceneId(),isOverview=group.id==='OVERVIEW'||!!content.document&&!q;
+    const r=review(),hasScene=!!sceneId(),isOverview=!q;
     $('takeaway').textContent=q?(q.kind==='pdf'?q.explain:r.takeaway||q.goal):group.intro;
     $('prediction').textContent=q?(q.kind==='pdf'?q.predict:r.predict||q.predict):group.intro;document.querySelector('.prediction-box').hidden=!q;
     $('easy-explanation').replaceChildren();
@@ -57,6 +93,7 @@
     $('experiment-instruction').textContent=(q?.kind==='pdf'?'이해를 돕는 별도 예제입니다. 교재의 수치와 다를 수 있어요. ':'')+(r.instruction||'버튼을 눌러 달라지는 부분을 확인하세요.');
     $('scene-legend').textContent=r.legend||'점을 선택하거나 시점을 돌려 계산의 관계를 살펴보세요.';
     $('concept-reading').hidden=!q||hasScene;
+    $('lesson').classList.toggle('is-overview',isOverview);
     $('check-section').hidden=!q;$('check-question').textContent=q?q.check:'';$('check-hint').textContent=q?(hints[sceneId()]||'원문에서 확인한 내용과 비교해, 이 개념이 하는 일과 연결되는 개념을 설명해보세요.'):'';$('check-section').querySelector('details').open=false;
     document.querySelector('.explanation').hidden=isOverview;document.querySelector('.connections').hidden=isOverview;$('source-details').hidden=isOverview;
     renderOverview(isOverview);
@@ -254,6 +291,12 @@
   function showAnalysis(message,error=false){const node=$('analysis-progress');node.hidden=false;node.classList.toggle('error',error);node.textContent=message;}
   function updateDocument(){const doc=content.document;$('document-name').textContent=doc?doc.name:'딥러닝 기초 · 13개 질문 예시 지도';$('analysis-notice').textContent=doc?`${doc.analysisLabel} · ${doc.pageCount}쪽 · ${doc.conceptCount}개 개념. ${doc.notice}`:'PDF를 선택하면 본문과 근거 페이지를 분석해 새 개념지도를 만듭니다.';$('demo-button').hidden=!doc;}
   $('overview-button').addEventListener('click',()=>go('OVERVIEW'));
+  $('question-filter').addEventListener('change',()=>renderNavigation());
+  $('previous-question').addEventListener('click',()=>{const index=content.questions.indexOf(q);if(index>0)go(content.questions[index-1].id);});
+  $('next-question').addEventListener('click',()=>{const index=content.questions.indexOf(q);if(index>=0&&index<content.questions.length-1)go(content.questions[index+1].id);});
+  $('review-toggle').addEventListener('click',()=>{if(!q)return;learningRecords.set(q.id,{...learningRecord(q.id),understood:!learningRecord(q.id).understood});saveLearning();renderNavigation();renderStudyTools();});
+  $('note-input').addEventListener('input',()=>{if(!q)return;noteDrafts.set(learningScope+'/'+q.id,$('note-input').value);$('note-status').textContent='저장 전 메모';});
+  $('save-note').addEventListener('click',()=>{if(!q)return;learningRecords.set(q.id,{...learningRecord(q.id),note:$('note-input').value});noteDrafts.delete(learningScope+'/'+q.id);const saved=saveLearning();$('note-status').textContent=saved?'이 브라우저에 저장했어요 ✓':'이번 화면에서만 유지돼요. 브라우저 저장을 사용할 수 없어요.';});
   $('evidence-button').addEventListener('click',()=>{$('source-details').open=true;$('source-details').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'});});
   $('demo-button').addEventListener('click',()=>{if(analysisRequest)analysisRequest.abort();expandedGroups.clear();content=demoContent;questions=new Map(content.questions.map(item=>[item.id,item]));if(pdfUrl)URL.revokeObjectURL(pdfUrl);pdfUrl=null;pdfName='';updateDocument();$('analysis-progress').hidden=true;go('OVERVIEW');});
   $('analysis-mode').addEventListener('change',()=>{$('analysis-notice').textContent=$('analysis-mode').value==='openai'?'PDF에서 추출한 텍스트를 OpenAI로 보내 문맥을 분석합니다. 파일을 선택하면 시작합니다.':'PDF 텍스트를 이 PC에서 구조 분석합니다. 파일을 선택하면 시작합니다.';});
@@ -274,8 +317,9 @@
   });
   window.addEventListener('popstate',()=>go(location.hash.slice(1)||'G1',false));
   let mobile=matchMedia('(max-width:680px)').matches;window.addEventListener('resize',()=>{const next=matchMedia('(max-width:680px)').matches;if(mobile!==next){mobile=next;renderNavigation();}});
-  document.querySelector('.brand').addEventListener('click',event=>{event.preventDefault();go('G1');});
+  document.querySelector('.brand').addEventListener('click',event=>{event.preventDefault();go('OVERVIEW');});
   window.ForestApp={selectQuestion:go,advance,snapshot:()=>({selected,sceneId:sceneId(),group:group.id,state:JSON.parse(JSON.stringify(state)),document:content.document||null,concepts:content.questions.map(item=>({id:item.id,title:item.title,sceneId:item.sceneId,concept:item.concept})),autodiff:M.autodiff(),playing:!!timer}),sceneDiagnostics:()=>({width:stage.w,height:stage.h,labels:stage.labelBounds||[],arrows:stage.commands.filter(item=>item.arrow).map(item=>item.points)}),setControl:(key,value)=>{if(!(key in state))throw Error('Unknown control');state[key]=value;refresh();}};
   go(location.hash.slice(1)||'OVERVIEW',false);
+  if(document.fonts)document.fonts.ready.then(()=>stage.draw());
   fetch('/api/status').then(response=>response.ok?response.json():null).then(status=>{if(status?.openaiAvailable){const option=$('analysis-mode').querySelector('[value=openai]');option.disabled=false;option.textContent='OpenAI 문맥 분석 · 추출 텍스트 전송';}}).catch(()=>{});
 })();

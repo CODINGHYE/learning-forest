@@ -58,7 +58,7 @@ fs.mkdirSync(out, { recursive: true });
     const homeChooserPromise=page.waitForEvent('filechooser');await page.locator('#home-pdf-button').click();const homeChooser=await homeChooserPromise;await homeChooser.setFiles(path.join(out,'fixture-ml.pdf'));
     await page.locator('#openai-dialog').waitFor({state:'visible'});assert.ok(await page.locator('#start-screen').isVisible());assert.ok(await page.locator('.app-layout').isHidden());
     await page.locator('#openai-close').click();await page.waitForFunction(()=>document.querySelector('#home-analysis-progress').textContent.includes('전송하지 않았으며'));
-    await page.locator('#home-openai-settings').click();assert.ok(await page.locator('#openai-dialog').isVisible());assert.equal(await page.locator('#openai-model').inputValue(),'gpt-4o-mini');await page.locator('#openai-close').click();
+    await page.locator('#home-openai-settings').click();assert.ok(await page.locator('#openai-dialog').isVisible());assert.equal(await page.locator('#openai-model').inputValue(),'gpt-4o-mini');await page.locator('#openai-dialog').screenshot({path:path.join(out,'connection-default.png')});await page.locator('#openai-close').click();
     await page.locator('#home-demo-button').click();assert.ok(await page.locator('#start-screen').isHidden());assert.ok(await page.locator('.app-layout').isVisible());
     await page.setViewportSize({width:1440,height:1080});
     checked.push('separate minimal home at four widths; upload opens personal connection before sending; demo opens map');

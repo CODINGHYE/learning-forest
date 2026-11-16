@@ -5,7 +5,7 @@
 - 최신 작업: [REALPDF-001](plans/REALPDF-001.md), [실제 교재 검토](REAL_PDF_REVIEW.md)
 - 이전 작업: [HARNESS-001](plans/HARNESS-001.md), [NOVICE-001](plans/NOVICE-001.md), [DESIGN-001](plans/DESIGN-001.md), [OPENAI-001](plans/OPENAI-001.md)
 - 최신 자동 실행 근거: `learning-forest/qa-output/verification.json` (로컬 산출물, 커밋 제외)
-- 후속 수정: CM-028. OpenAI 연결의 브라우저 통신 오류 안내·로컬 앱/재확인 경로, 기본 모델 `gpt-4o-mini` 통일. 수치 9개·Python 41개 및 브라우저 복구 검사. 최초 실패의 정확한 원인은 미확인이고 새 서버에서 개인 키 재입력은 사용자만 수행한다.
+- 후속 수정: CM-028. OpenAI 연결의 브라우저 통신 오류 안내·로컬 앱/재확인 경로, 기본 모델 `gpt-4o-mini` 통일. 수치 9개·Python 41개 및 브라우저 복구 검사 통과. 새 서버에서 사용자가 다시 연결한 뒤 오류가 없다고 답했고 실제 연결 HTTP 200을 확인했다. 최초 실패의 정확한 원인은 미확인이다.
 
 ## 기능별 상태
 

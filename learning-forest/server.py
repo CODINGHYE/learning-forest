@@ -292,5 +292,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=4173)
     args = parser.parse_args()
-    print(f'Learning Forest local preview: http://127.0.0.1:{args.port}', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
+    try:
+        with ThreadingHTTPServer(('127.0.0.1', args.port), Handler) as httpd:
+            print(f'Learning Forest local preview: http://127.0.0.1:{httpd.server_port}', flush=True)
+            print('Keep this window open. Press Ctrl+C to stop.', flush=True)
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                print('\nLearning Forest stopped.', flush=True)
+    except OSError:
+        raise SystemExit('Could not start the local server. Try a different port: python run.py --port 4174')

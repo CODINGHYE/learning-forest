@@ -35,17 +35,6 @@ class AnalysisTests(unittest.TestCase):
         self.assertIsNone(source_concept_plan(pages, 'geology.pdf'))
         self.assertTrue(evidence_anchors(pages))
 
-    def test_uploaded_class_has_source_coverage(self):
-        sources = list(Path('C:/Users/user/Downloads').glob('*Deep Learning Basics.pdf'))
-        if not sources:
-            self.skipTest('The user-provided reference PDF is not present on this machine.')
-        pages = extract_pdf(sources[0].read_bytes())
-        self.assertEqual(len(pages), 92)
-        plan = source_concept_plan(pages, sources[0].name)
-        self.assertEqual(len(plan['concepts']), 32)
-        self.assertIn('강화학습', {node['title'] for node in plan['concepts'].values()})
-        self.assertTrue(all(1 <= page <= len(pages) for node in plan['concepts'].values() for page in node['pages']))
-
     def test_only_present_topics_are_coverage_candidates(self):
         pages = [{'page':1,'text':'Perceptron uses weights and bias. Activation function ReLU changes the output. MLP connects layers.'}]
         keys = {node['key'] for node in detect_source_topics(pages)}

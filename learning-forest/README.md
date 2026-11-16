@@ -6,6 +6,8 @@ PDF를 연결한 OpenAI로 분석해 큰 흐름과 개념의 뜻·용도·연결
 
 프로젝트 루트에서 의존성을 준비하고 실행한다.
 
+각 컴퓨터의 간편 실행은 루트 `start.bat`(Windows), `sh start.sh`(macOS·Linux) 또는 `python run.py`를 사용한다. 처음 한 번 프로젝트 `.venv`에 실행 의존성을 설치한다. 자세한 설치·포트·개인 API 연결 방법은 [루트 안내](../README.md)를 따른다. 아래 직접 실행은 이미 의존성이 준비된 환경용이다.
+
 ```powershell
 python -m pip install -r requirements.txt
 python learning-forest/server.py --port 4173

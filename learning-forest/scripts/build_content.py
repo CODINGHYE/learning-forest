@@ -38,13 +38,15 @@ def build_content(design, review):
         source_text = source[1].strip()
         pages = re.search(r'PDF (\d+)', source_text)
         entry = {'id': qid, 'group': 'G' + qid[1], 'title': title,
+                 'concept': field(section, '개념 이름'), 'purpose': field(section, '언제 필요한가'),
+                 'definition': field(section, '개념 설명'),
                  'goal': field(section, '목표'), 'predict': field(section, '예상 질문'),
                  'explain': ' '.join(paragraphs), 'terms': field(section, '이름 붙이기'),
                  'check': field(section, '이해 확인'),
                  'next': list(dict.fromkeys(re.findall(r'Q\d+\.\d+', field(section, '연결')))),
                  'source': source_text, 'page': int(pages[1]) if pages else None,
                  'caution': field(section, '주의'), 'review': metadata, 'sceneId': qid}
-        if not all(entry[k] for k in ('goal', 'predict', 'terms', 'check')):
+        if not all(entry[k] for k in ('goal', 'predict', 'terms', 'check', 'concept', 'definition', 'purpose')):
             raise ValueError(f'{qid}: incomplete learning contract')
         questions.append(entry)
     ids = [q['id'] for q in questions]
@@ -53,7 +55,11 @@ def build_content(design, review):
     for q in questions:
         if not all(target in ids for target in q['next']):
             raise ValueError(f"{q['id']}: broken question link")
-    return {'groups': groups, 'questions': questions, 'version': '0.3.0'}
+    edges = [{'from':a, 'to':b, 'type':kind.strip(), 'reason':reason.strip()} for a,b,kind,reason in
+             re.findall(r'^\| (Q\d+\.\d+) \| (Q\d+\.\d+) \| ([^|]+) \| ([^|]+) \|$', design, re.M)]
+    if not edges or any(edge['from'] not in ids or edge['to'] not in ids for edge in edges):
+        raise ValueError('Missing or invalid semantic relationships')
+    return {'groups': groups, 'questions': questions, 'edges': edges, 'version': '0.4.0'}
 
 
 def render(data):

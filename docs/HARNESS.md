@@ -6,14 +6,14 @@
 
 | 정보 | 수정할 원본 | 파생 결과 |
 |---|---|---|
-| 질문 ID·제목·목표·예상 질문·화면 설명·자료 근거·다음 질문, 큰 질문 제목·소개 | [QUESTION_SCENARIOS](QUESTION_SCENARIOS.md) | `learning-forest/dist/content.js` |
+| 질문 ID·제목·개념 이름·기본 개념 설명·용도·목표·예상·실험 설명·근거·다음 질문·의미 관계 표, 큰 질문 제목·소개 | [QUESTION_SCENARIOS](QUESTION_SCENARIOS.md) | `learning-forest/dist/content.js` |
 | 한 줄 요약·조작 안내·범례·용어 풀이·이동 안내 | `learning-forest/content/review.json` | `content.js`의 `review` |
 | 그룹 짧은 이름·대표 질문, 생성 규칙 | `learning-forest/scripts/build_content.py` | `content.js` |
 | 수치·렌더링·화면 제어 | `dist/math.js`, `dist/scene.js`, `dist/app.js`, HTML/CSS | 실행 화면 |
 | PDF 로컬 분석·AI 결과 검사 | `pdf_analysis.py`, `server.py` | 업로드 문서의 임시 지도 |
 | 현재 기능 상태·확인 범위 | [STATUS](STATUS.md) | 완료 보고 |
 
-`review.json`에 별도 `explain`·`predict`를 두지 않는다. 설명을 수정할 때 설계서의 질문별 인용문을 수정하고 생성기를 실행한다. `content.js`를 직접 고쳐도 검증에서 원본 불일치로 실패한다. 생성기는 안정적인 질문 ID, 필수 필드, 끊어진 질문 연결도 검사한다.
+`review.json`에 별도 `explain`·`predict`를 두지 않는다. 기본 개념 설명·용도는 설계서의 해당 필드, 선택형 실험 설명은 질문별 인용문, 의미 연결은 관계 표를 수정한 뒤 생성기를 실행한다. `content.js`를 직접 고쳐도 검증에서 원본 불일치로 실패한다. 생성기는 안정적인 질문 ID, 필수 필드, 끊어진 질문 연결도 검사한다.
 
 ## 변경 절차
 

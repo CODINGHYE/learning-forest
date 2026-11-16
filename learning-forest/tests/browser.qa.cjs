@@ -27,7 +27,14 @@ fs.mkdirSync(out, { recursive: true });
     const fontFaces=await page.evaluate(()=>[...document.fonts].filter(face=>face.family==='NanumSquareRound').map(face=>[face.weight,face.status]));
     assert.deepEqual(fontFaces,[['400','loaded'],['700','loaded'],['800','loaded']],'bundled Korean font weights must actually load');
     const snapshot = () => page.evaluate(() => ForestApp.snapshot());
-    const select = id => page.evaluate(id => ForestApp.selectQuestion(id), id);
+    const select = async id => {
+      await page.evaluate(id => ForestApp.selectQuestion(id), id);
+      if(await page.locator('#visualization-button').isVisible()){
+        assert.ok(await page.locator('#visualization-panel').isHidden(),'visualization must start closed: '+id);
+        assert.equal((await page.evaluate(()=>ForestApp.sceneDiagnostics().arrows)).length,0,'scene created before request');
+        await page.locator('#visualization-button').click();
+      }
+    };
     const ids = await page.evaluate(() => ForestContent.questions.map(q => q.id));
     assert.equal(ids.length, 13);
     for (const id of ids) {
@@ -35,7 +42,8 @@ fs.mkdirSync(out, { recursive: true });
       assert.equal((await snapshot()).selected, id);
       const expected = await page.evaluate(id => ForestContent.questions.find(q => q.id === id), id);
       assert.equal(await page.locator('#question-title').innerText(), expected.title);
-      assert.equal(await page.locator('#easy-explanation').innerText(), expected.review.explain.join('\n\n'));
+      assert.equal(await page.locator('#easy-explanation').innerText(), expected.definition);
+      assert.equal(await page.locator('#visual-explanation p').allTextContents().then(items=>items.join('\n\n')), expected.review.explain.join('\n\n'));
       assert.equal(await page.locator('.group-link').count(), 4);
       let count = 0;
       while (!await page.locator('#step-button').isDisabled()) {
@@ -172,7 +180,61 @@ fs.mkdirSync(out, { recursive: true });
     await select('Q4.3');assert.ok(await page.locator('#next-question').isDisabled());
     checked.push('roadmap drill-down, previous/next bounds, draft retention, durable notes and explicit understanding filters');
     await page.setViewportSize({ width: 390, height: 900 });
-    assert.ok(await page.locator('#analysis-mode option[value=openai]').isDisabled());
+    assert.equal(await page.locator('#analysis-mode').inputValue(),'openai');
+    // The default AI pipeline requires a connection and never sends the selected PDF yet.
+    let prematureUploads=0;
+    const observeUpload=request=>{if(request.url().endsWith('/api/analyze-pdf'))prematureUploads++;};
+    page.on('request',observeUpload);
+    await page.locator('#pdf-file').setInputFiles(path.join(out, 'fixture-ml.pdf'));
+    await page.locator('#openai-dialog').waitFor({state:'visible'});
+    assert.equal(prematureUploads,0);
+    const fakeKey='sk-ui-fixture-never-a-real-key';
+    let mockConnected=false;
+    await page.route('**/api/status',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({available:true,serverOpenaiAvailable:false,defaultModel:'gpt-5-mini',connection:{connected:mockConnected,model:mockConnected?'gpt-5-mini':null,expiresIn:3600}})}));
+    await page.route('**/api/openai/connect',route=>route.fulfill({status:422,contentType:'application/json',body:JSON.stringify({error:'API 키를 인증하지 못했습니다.',code:'invalid_api_key'})}));
+    await page.locator('#openai-key').fill(fakeKey);await page.locator('#openai-connect-submit').click();
+    await page.waitForFunction(()=>document.querySelector('#openai-connect-message').classList.contains('error'));
+    assert.equal(await page.locator('#openai-key').inputValue(),'');assert.equal(prematureUploads,0);
+    await page.locator('#openai-close').click();
+    await page.waitForFunction(()=>document.querySelector('#analysis-progress').textContent.includes('전송하지 않았으며'));
+    assert.equal(prematureUploads,0);assert.equal((await snapshot()).document,null);
+    await page.locator('#pdf-file').setInputFiles(path.join(out, 'fixture-ml.pdf'));
+    await page.locator('#openai-dialog').waitFor({state:'visible'});
+    await page.unroute('**/api/openai/connect');
+    await page.route('**/api/openai/connect',route=>{const sent=route.request().postDataJSON();assert.equal(sent.apiKey,fakeKey);mockConnected=true;return route.fulfill({contentType:'application/json',body:JSON.stringify({connected:true,model:sent.model,expiresIn:3600})});});
+    // Mock only the paid-AI browser boundary; Python tests exercise model verification,
+    // isolated server sessions, credential routing, schema normalization and evidence.
+    const aiMap={groups:[{id:'PG1',title:'예측을 어떻게 고칠까?',short:'예측과 수정',intro:'오차와 방향',preview:null}],
+      questions:[{id:'C-loss',group:'PG1',concept:'오차와 손실',title:'예측이 얼마나 틀렸을까?',explain:'예측과 정답의 차이가 오차입니다. 손실은 틀린 정도를 비교하는 숫자입니다.',purpose:'예측을 비교하고 고칠 기준을 정할 때 씁니다.',example:'예측 4와 정답 8의 차이를 비교해요.',kind:'pdf',sceneId:'Q3.1',page:1,source:'fixture-ml.pdf · PDF 1쪽',evidence:[{page:1,excerpt:'Loss function'}],next:['C-derivative']},
+      {id:'C-derivative',group:'PG1',concept:'미분',title:'어느 방향으로 바꿀까?',explain:'작은 변화가 결과에 주는 영향을 구합니다.',purpose:'손실을 줄일 방향을 알아볼 때 씁니다.',kind:'pdf',sceneId:'Q3.2',page:1,source:'fixture-ml.pdf · PDF 1쪽',evidence:[{page:1,excerpt:'gradient'}],next:[]}],
+      edges:[{from:'C-loss',to:'C-derivative',type:'줄일 방향 찾기',reason:'손실은 틀린 정도를 나타내고, 미분은 그 손실을 줄일 방향을 알아보는 데 쓰입니다.'}],
+      document:{name:'fixture-ml.pdf',pageCount:1,conceptCount:2,mode:'openai',analysisLabel:'OpenAI 문맥 분석',summary:'예측이 얼마나 틀렸는지 재고 그 값을 줄이는 방법을 연결합니다.',notice:'모의 AI 응답 UI 검사'}};
+    await page.route('**/api/analyze-pdf',route=>{const headers=route.request().headers();assert.equal(headers['x-analysis-mode'],'openai');assert.equal(headers['x-openai-source'],'personal');assert.ok(!JSON.stringify(headers).includes(fakeKey));assert.ok(!route.request().postDataBuffer().includes(Buffer.from(fakeKey)));return route.fulfill({contentType:'application/json',body:JSON.stringify(aiMap)});});
+    await page.locator('#openai-key').fill(fakeKey);await page.locator('#openai-connect-submit').click();
+    await page.waitForFunction(()=>ForestApp.snapshot().document?.mode==='openai');
+    assert.equal(prematureUploads,1);
+    assert.match(await page.locator('#forest-summary-text').innerText(),/틀렸는지 재고/);
+    await page.locator('#concept-overview a[href="#C-loss"]').click();
+    assert.ok(await page.locator('#visualization-panel').isHidden());
+    assert.match(await page.locator('#easy-explanation').innerText(),/정답의 차이/);
+    assert.match(await page.locator('#concept-purpose').innerText(),/고칠 기준/);
+    assert.match(await page.locator('.connections').innerText(),/그 손실을 줄일 방향/);
+    await page.locator('#forest-network .network-mobile-relation button').click();
+    assert.equal((await snapshot()).selected,'C-derivative');assert.ok(await page.locator('#visualization-panel').isHidden());
+    await page.locator('.connections a[href="#C-loss"]').click();
+    assert.equal((await snapshot()).selected,'C-loss');assert.ok(await page.locator('#visualization-panel').isHidden());
+    await page.locator('#visualization-button').click();assert.ok(await page.locator('.experiment').isVisible());
+    await page.reload();await page.waitForFunction(()=>!!window.ForestApp);await page.evaluate(()=>ForestConnection.ready);
+    assert.match(await page.locator('#openai-connection-status').innerText(),/내 키 연결됨/);
+    assert.ok(!(await page.evaluate(()=>JSON.stringify([localStorage,sessionStorage])+document.cookie)).includes(fakeKey));
+    await page.route('**/api/openai/disconnect',route=>{mockConnected=false;return route.fulfill({contentType:'application/json',body:'{"connected":false}'});});
+    await page.locator('#openai-settings').click();assert.equal(await page.locator('#openai-key').inputValue(),'');
+    await page.locator('#openai-disconnect').click();await page.locator('#openai-dialog').waitFor({state:'hidden'});
+    assert.doesNotMatch(await page.locator('#openai-connection-status').innerText(),/내 키 연결됨/);
+    for(const route of ['**/api/status','**/api/openai/connect','**/api/openai/disconnect','**/api/analyze-pdf'])await page.unroute(route);
+    page.off('request',observeUpload);
+    checked.push('mocked personal AI connect failure/success, PDF-first queue, summary/purpose/semantic relations, refresh/disconnect, no key in storage or PDF request');
+    await page.locator('#analysis-mode').selectOption('local');
     await page.locator('#pdf-file').setInputFiles(path.join(out, 'fixture-ml.pdf'));
     await page.waitForFunction(() => ForestApp.snapshot().document?.mode === 'local');
     assert.match(await page.locator('#progress-count').innerText(),/^0 \//);
@@ -221,6 +283,7 @@ fs.mkdirSync(out, { recursive: true });
     await select('Q3.3');
     assert.ok(await page.locator('.experiment').isVisible());
     checked.push('real local PDF upload, evidence, errors preserve map, unsupported scene, overview and demo return');
+    checked.push('explanations and semantic connections first; all 13 visualizations created only after explicit request; AI is the default upload mode and requires connection');
     checked.push('notes and understanding records are separate for demo and each analyzed PDF');
     const blocked=await browser.newPage({viewport:{width:390,height:900}});
     await blocked.addInitScript(()=>{Storage.prototype.setItem=function(){throw new DOMException('Storage unavailable','QuotaExceededError');};});

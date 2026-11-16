@@ -10,7 +10,7 @@
 
 - 저장소 기준은 이 폴더다. 앱 내부에 별도 Git을 만들지 않는다. 현황은 `docs/STATUS.md`, 운영 절차는 `docs/HARNESS.md`를 읽는다.
 - 복잡한 작업은 `docs/plans/TEMPLATE.md`를 바탕으로 목표·완료 조건·결정·결과를 기록한다. 작은 수정은 작업 설명과 커밋으로 충분하다.
-- 화면 설명과 예상 질문의 원본은 `docs/QUESTION_SCENARIOS.md`다. 설명은 질문별 인용문에서 생성한다. `learning-forest/content/review.json`은 UI 보조 문구이며 설명·예상 질문을 중복 저장하지 않는다.
+- 화면 설명과 예상 질문의 원본은 `docs/QUESTION_SCENARIOS.md`다. 기본 설명·개념 이름·용도는 해당 필드에서, 선택형 실험 설명은 질문별 인용문에서 생성한다. 의미 연결은 설계서의 관계 표가 원본이다. `learning-forest/content/review.json`은 UI 보조 문구이며 설명·예상 질문을 중복 저장하지 않는다.
 - `learning-forest/dist/content.js`는 생성물이다. 원본 수정 후 `learning-forest/scripts/build_content.py`를 명시적으로 실행하고 diff를 확인한다. 나머지 dist 파일은 현재 직접 수정하는 소스다.
 - 통합 검증은 루트의 `.\verify.ps1`. 빠른 확인은 `.\verify.ps1 -Quick`이며 브라우저 생략 결과를 전체 통과로 보고하지 않는다. 설정과 대체 명령은 루트 README를 따른다.
 - 검증은 파일을 자동 수정하거나 유료 API를 호출하지 않는다. 결과는 `learning-forest/qa-output/verification.json`의 코드 버전·입력 해시·시각·검사별 결과로 확인한다.

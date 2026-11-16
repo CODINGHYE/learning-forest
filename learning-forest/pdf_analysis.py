@@ -76,7 +76,14 @@ PDF에 실제로 나오는 주요 개념을 5~24개 선정한다(내용이 적�
 Q2.3 비선형 활성화 ReLU, Q3.1 제곱오차(교차엔트로피에는 쓰지 말 것), Q3.2 작은변화 미분, Q3.3 역전파 연쇄법칙,
 Q3.4 경사하강 학습률, Q4.1 텐서 모양과 행렬곱, Q4.2 계산그래프, Q4.3 자동미분과 갱신 구분.
 필드 id는 C1 등, groupId는 PG1 등으로 한다. 개념 이름 title은 짧게, question은 자연스러운 질문으로 한다.
-description은 교재 내용의 쉬운 설명이며 원문을 넘어 추측하지 않는다. evidenceQuote는 원문에 있는 15~150자 구절이다.'''
+description은 교재 내용의 쉬운 설명이며 원문을 넘어 추측하지 않는다. evidenceQuote는 원문에 있는 15~150자 구절이다.
+핵심 목표는 PDF 전체에서 무엇을 배우는지, 각 개념이 어떤 필요 때문에 등장하며 서로 어떻게 연결되는지를 비전공자가 자기 말로 설명하게 하는 것이다.
+summary에는 PDF 전체의 큰 주제와 개념들이 함께 다루는 문제를 2~3문장으로 요약한다.
+각 개념의 purpose에는 언제 무엇을 위해 쓰는지, example에는 한 가지 쉬운 상황을 쓴다. 교재 밖의 예시는 '이해를 돕는 예'라고 밝힌다.
+edges는 목차의 이웃 순서를 복사하지 말고 실제 의미 관계를 설명한다. reason에는 두 개념 이름을 포함해 A가 하는 일과 B를 연결하는 이유를 1~2문장으로 쓴다.
+예: 손실은 틀린 정도를 숫자로 비교하며, 미분은 그 숫자를 줄이기 위해 무엇을 어느 방향으로 바꿀지 알아보는 데 쓰인다. 미분이 오차 자체를 만들기 위해 필요하다고 쓰지 않는다.
+관계는 학습 도움·부분과 전체·비교·필요한 도구·계산 과정 등을 구별한다. 모든 관계를 반드시 필요한 선행 조건이나 역사적 순서로 단정하지 않는다.
+시각화는 선택 기능이다. 설명을 읽기 위해 3D 예시를 먼저 봤다고 가정하지 말고, description을 스스로 이해 가능한 문장으로 쓴다.'''
 
 
 def compact(text):
@@ -157,14 +164,14 @@ def analyze_headings(pages, name):
 
 def make_schema():
     string = {'type': 'string'}
-    concept = {'type': 'object', 'additionalProperties': False, 'properties': {'id': string, 'groupId': string, 'title': string, 'question': string, 'description': string, 'pages': {'type': 'array', 'items': {'type': 'integer'}}, 'evidenceQuote': string, 'sceneId': {'type': ['string','null'], 'enum': [None] + [f'Q{g}.{n}' for g,count in [(1,3),(2,3),(3,4),(4,3)] for n in range(1,count+1)]}}, 'required': ['id','groupId','title','question','description','pages','evidenceQuote','sceneId']}
+    concept = {'type': 'object', 'additionalProperties': False, 'properties': {'id': string, 'groupId': string, 'title': string, 'question': string, 'description': string, 'purpose': string, 'example': string, 'pages': {'type': 'array', 'items': {'type': 'integer'}}, 'evidenceQuote': string, 'sceneId': {'type': ['string','null'], 'enum': [None] + [f'Q{g}.{n}' for g,count in [(1,3),(2,3),(3,4),(4,3)] for n in range(1,count+1)]}}, 'required': ['id','groupId','title','question','description','purpose','example','pages','evidenceQuote','sceneId']}
     group = {'type': 'object','additionalProperties':False,'properties':{'id':string,'title':string},'required':['id','title']}
     edge = {'type':'object','additionalProperties':False,'properties':{'from':string,'to':string,'type':string,'reason':string},'required':['from','to','type','reason']}
-    return {'type': 'object', 'additionalProperties': False, 'properties': {'groups': {'type':'array','items':group}, 'concepts': {'type':'array','items':concept}, 'edges': {'type':'array','items':edge}}, 'required':['groups','concepts','edges']}
+    return {'type': 'object', 'additionalProperties': False, 'properties': {'summary': string, 'groups': {'type':'array','items':group}, 'concepts': {'type':'array','items':concept}, 'edges': {'type':'array','items':edge}}, 'required':['summary','groups','concepts','edges']}
 
 
 def normalize_ai_map(raw, pages, name):
-    if not isinstance(raw.get('concepts'), list) or not 1 <= len(raw['concepts']) <= 40:
+    if not isinstance(raw, dict) or not isinstance(raw.get('concepts'), list) or not 1 <= len(raw['concepts']) <= 40:
         raise ValueError('Invalid concept count')
     by_page = {p['page']:p['text'] for p in pages}
     if not 1 <= len(raw.get('groups', [])) <= 5:
@@ -186,5 +193,18 @@ def normalize_ai_map(raw, pages, name):
             raise ValueError('Unsupported evidence')
         evidence=[{'page':p,'excerpt':excerpt(by_page[p])} for p in valid_pages if quote in compact(by_page[p])]
         evidence[0]['excerpt']=quote
-        nodes.append({'id':item['id'],'group':item['groupId'],'concept':item['title'],'title':item['question'],'goal':item['description'].split('。')[0],'predict':'먼저 이 개념이 하는 일을 예상해보세요.','explain':item['description'],'terms':item['title'],'check':'원문 근거와 비교해 이 개념을 한 문장으로 설명해볼까요?','sceneId':item['sceneId'],'evidence':evidence,'supplement':False})
-    return assemble(nodes, groups, raw['edges'], pages, name, 'openai')
+        for key in ('purpose', 'example'):
+            if key in item and (not isinstance(item[key], str) or not item[key].strip() or len(item[key]) > 2000):
+                raise ValueError('Invalid concept explanation')
+        nodes.append({'id':item['id'],'group':item['groupId'],'concept':item['title'],'title':item['question'],'goal':item['description'].split('。')[0],'predict':'먼저 이 개념이 하는 일을 예상해보세요.','explain':item['description'],'purpose':item.get('purpose',''),'example':item.get('example',''),'terms':item['title'],'check':'이 개념이 무엇을 하고 다른 개념과 어떻게 이어지는지 내 말로 설명해볼까요?','sceneId':item['sceneId'],'evidence':evidence,'supplement':False})
+    if not isinstance(raw.get('edges'), list) or len(raw['edges']) > 120:
+        raise ValueError('Invalid relationships')
+    for edge in raw['edges']:
+        if edge.get('from') not in ids or edge.get('to') not in ids or edge['from'] == edge['to'] or not all(isinstance(edge.get(key), str) and edge[key].strip() for key in ('type', 'reason')):
+            raise ValueError('Invalid relationship')
+    summary = raw.get('summary', '')
+    if not isinstance(summary, str) or len(summary) > 4000:
+        raise ValueError('Invalid summary')
+    result = assemble(nodes, groups, raw['edges'], pages, name, 'openai')
+    result['document']['summary'] = summary
+    return result

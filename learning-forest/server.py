@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent
 MAX_BYTES = 30 * 1024 * 1024
 SESSION_TTL = 3600
 SESSION_COOKIE = 'forest_openai'
+DEFAULT_MODEL = 'gpt-4o-mini'
 
 
 class ApiError(ValueError):
@@ -114,7 +115,7 @@ def load_env():
         if not line or line.startswith('#') or '=' not in line:
             continue
         key, value = line.split('=', 1)
-        if key.strip() in {'OPENAI_API_KEY', 'OPENAI_MODEL'}:
+        if key.strip() == 'OPENAI_API_KEY':
             os.environ.setdefault(key.strip(), value.strip().strip('"\''))
 
 
@@ -160,7 +161,7 @@ def analyze_openai(pages, name, *, api_key=None, model=None):
     plan = source_concept_plan(included_pages, name)
     planning_text = '' if not plan else '\n\n[반드시 설명할 원문 기반 개념 범위]\n' + json.dumps(plan, ensure_ascii=False) + '\n위 개념은 실제 PDF에서 발견한 주제 후보입니다. 스키마의 개념별 필수 항목을 하나도 빼지 마세요. meaning은 검토된 기초 보충 풀이이며 원문 인용이 아닙니다. 이를 참고해 description은 쉬운 2~3문장, purpose는 필요한 상황, example은 작은 가상 예로 각각 다르게 쓰세요. relations의 올바른 핵심 흐름을 포함하고 교재에서 확인되는 연결도 추가하세요.\n최종 확인: 손실은 틀린 정도를 잰다. 미분/역전파는 기울기를 구한다. 경사하강법은 실제 가중치를 바꾼다. 이 단계들을 혼동하지 마세요. 가중합·비선형·기울기는 뜻을 같은 문장에서 풀어주세요. 퍼셉트론의 이해를 모든 학습자의 절대적인 필수 조건으로 단정하지 마세요.'
     payload = {
-        'model': model or os.environ.get('OPENAI_MODEL', 'gpt-5-mini'),
+        'model': model or DEFAULT_MODEL,
         'store': False,
         'input': [
             {'role': 'system', 'content': RULES + '\n\n다음 프로젝트 작성 원칙도 준수한다:\n' + read_principles()},
@@ -223,7 +224,7 @@ class Handler(SimpleHTTPRequestHandler):
             record = CONNECTIONS.get(self.session_token())
             server_key = bool(os.environ.get('OPENAI_API_KEY'))
             self.send_json(200, {'available': True, 'openaiAvailable': server_key or bool(record), 'serverOpenaiAvailable': server_key,
-                                 'defaultMode': 'local', 'defaultModel': os.environ.get('OPENAI_MODEL', 'gpt-5-mini'),
+                                 'defaultMode': 'openai', 'defaultModel': DEFAULT_MODEL,
                                  'connection': {'connected': bool(record), 'model': record['model'] if record else None,
                                                 'expiresIn': max(0, int(record['expires'] - time.monotonic())) if record else 0}})
         else:
@@ -251,7 +252,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError('연결 정보를 읽지 못했습니다. 다시 입력해주세요.') from None
                 if not isinstance(body, dict):
                     raise ValueError('API 키와 모델을 다시 입력해주세요.')
-                key, model = verify_openai_connection(body.get('apiKey'), body.get('model'))
+                key, model = verify_openai_connection(body.get('apiKey'), body.get('model', DEFAULT_MODEL))
                 token = CONNECTIONS.create(key, model)
                 CONNECTIONS.remove(self.session_token())
                 self.send_json(200, {'connected': True, 'model': model, 'expiresIn': SESSION_TTL},

@@ -50,7 +50,7 @@ class PersonalConnectionTests(unittest.TestCase):
         with response:
             return response.status, json.load(response), response.headers
 
-    def connect(self, key=KEY_A, model='gpt-5-mini', cookie=None):
+    def connect(self, key=KEY_A, model='gpt-4o-mini', cookie=None):
         with patch.object(server.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps({'id': model}).encode())):
             status, body, headers = self.request('/api/openai/connect', json.dumps({'apiKey': key, 'model': model}).encode(), cookie)
         self.assertEqual(status, 200)
@@ -86,7 +86,7 @@ class PersonalConnectionTests(unittest.TestCase):
         self.assertIn('HttpOnly', headers['Set-Cookie'])
         self.assertIn('SameSite=Strict', headers['Set-Cookie'])
         with patch.dict(os.environ, {'OPENAI_API_KEY': 'server-fixture'}), patch.object(server, 'analyze_openai', return_value={'ok': True}) as analyze:
-            for cookie, key, model in [(first, KEY_A, 'gpt-5-mini'), (second, KEY_B, 'gpt-5')]:
+            for cookie, key, model in [(first, KEY_A, 'gpt-4o-mini'), (second, KEY_B, 'gpt-5')]:
                 status, body, _ = self.request('/api/analyze-pdf', make_pdf(), cookie, {'X-Analysis-Mode': 'openai', 'X-OpenAI-Source': 'personal'})
                 self.assertEqual(status, 200)
                 self.assertEqual(analyze.call_args.kwargs, {'api_key': key, 'model': model})
@@ -106,6 +106,23 @@ class PersonalConnectionTests(unittest.TestCase):
         self.assertIn('Max-Age=0', headers['Set-Cookie'])
         self.assertIsNone(self.store.get(first.split('=', 1)[1]))
         self.assertIsNotNone(self.store.get(second.split('=', 1)[1]))
+
+    def test_default_model_ignores_legacy_environment_and_missing_model_uses_default(self):
+        with patch.dict(os.environ, {'OPENAI_MODEL': 'legacy-model'}):
+            _, body, _ = self.request('/api/status')
+            self.assertEqual(body['defaultModel'], 'gpt-4o-mini')
+            with patch.object(server, 'verify_openai_connection', return_value=(KEY_A, 'gpt-4o-mini')) as verify:
+                status, body, _ = self.request('/api/openai/connect', json.dumps({'apiKey': KEY_A}).encode())
+            self.assertEqual(status, 200)
+            verify.assert_called_once_with(KEY_A, 'gpt-4o-mini')
+
+    def test_analysis_without_explicit_model_uses_gpt_4o_mini(self):
+        payload = {'output': [{'content': [{'type': 'output_text', 'text': '{}'}]}]}
+        with patch.dict(os.environ, {'OPENAI_MODEL': 'legacy-model'}), \
+             patch.object(server, 'normalize_ai_map', return_value={'ok': True}), \
+             patch.object(server.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(payload).encode())) as upstream:
+            server.analyze_openai([{'page': 1, 'text': 'Gradient descent changes parameters using gradients.'}], 'fixture.pdf', api_key=KEY_A)
+        self.assertEqual(json.loads(upstream.call_args.args[0].data)['model'], 'gpt-4o-mini')
 
     def test_expiry_never_falls_back_to_server_key(self):
         cookie, _, _ = self.connect()

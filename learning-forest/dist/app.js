@@ -348,13 +348,11 @@
     if(analysisRequest)analysisRequest.abort();const request=new AbortController();analysisRequest=request;stop();
     showAnalysis(`${file.name}에서 텍스트와 주제를 읽고 개념의 연결을 정리하고 있습니다…`);
     try{
-      const response=await fetch('/api/analyze-pdf',{method:'POST',headers:{'Content-Type':'application/pdf','X-Filename':encodeURIComponent(file.name),'X-Analysis-Mode':$('analysis-mode').value,'X-OpenAI-Source':ForestConnection.source()},body:file,signal:request.signal});
-      if(!(response.headers.get('content-type')||'').includes('application/json'))throw Error('PDF 분석 서버가 실행되지 않았습니다. 로컬 분석 서버로 화면을 열어주세요.');
-      const result=await response.json();if(!response.ok){if(result.code==='connection_expired')await ForestConnection.refresh();throw Error(result.error||'PDF 분석을 완료하지 못했습니다.');}if(analysisRequest!==request)return;
+      const result=await ForestAPI.request('/api/analyze-pdf',{method:'POST',headers:{'Content-Type':'application/pdf','X-Filename':encodeURIComponent(file.name),'X-Analysis-Mode':$('analysis-mode').value,'X-OpenAI-Source':ForestConnection.source()},body:file,signal:request.signal});if(analysisRequest!==request)return;
       if(!Array.isArray(result.questions)||!result.questions.length||!Array.isArray(result.groups))throw Error('PDF에서 개념을 찾지 못했습니다. 다른 파일을 선택해주세요.');
       if(pdfUrl)URL.revokeObjectURL(pdfUrl);pdfUrl=URL.createObjectURL(file);pdfName=file.name;expandedGroups.clear();content=reviewMap(result);questions=new Map(content.questions.map(item=>[item.id,item]));
       updateDocument();showAnalysis(`개념지도 생성 완료 · ${result.document.pageCount}쪽에서 ${result.questions.length}개 개념을 찾았습니다. 지도에서 궁금한 개념을 골라보세요.`);go('OVERVIEW');
-    }catch(error){if(error.name!=='AbortError')showAnalysis(error.message||'분석 연결에 실패했습니다. 현재 지도는 유지됩니다.',true);}
+    }catch(error){if(error.code==='connection_expired')await ForestConnection.refresh();if(error.name!=='AbortError')showAnalysis(error.message||'분석 연결에 실패했습니다. 현재 지도는 유지됩니다.',true);}
     finally{if(analysisRequest===request)analysisRequest=null;}
   }
   $('pdf-file').addEventListener('change',event=>{const file=event.target.files[0];event.target.value='';analyzeFile(file);});

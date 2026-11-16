@@ -10,7 +10,7 @@
 | 한 줄 요약·조작 안내·범례·용어 풀이·이동 안내 | `learning-forest/content/review.json` | `content.js`의 `review` |
 | 그룹 짧은 이름·대표 질문, 생성 규칙 | `learning-forest/scripts/build_content.py` | `content.js` |
 | 수치·렌더링·화면 제어 | `dist/math.js`, `dist/scene.js`, `dist/app.js`, HTML/CSS | 실행 화면 |
-| PDF 로컬 분석·AI 결과 검사 | `pdf_analysis.py`, `server.py` | 업로드 문서의 임시 지도 |
+| PDF 본문 추출·AI 결과 검사 | `pdf_analysis.py`, `server.py` | 업로드 문서의 임시 지도 |
 | 현재 기능 상태·확인 범위 | [STATUS](STATUS.md) | 완료 보고 |
 
 `review.json`에 별도 `explain`·`predict`를 두지 않는다. 기본 개념 설명·용도는 설계서의 해당 필드, 선택형 실험 설명은 질문별 인용문, 의미 연결은 관계 표를 수정한 뒤 생성기를 실행한다. `content.js`를 직접 고쳐도 검증에서 원본 불일치로 실패한다. 생성기는 안정적인 질문 ID, 필수 필드, 끊어진 질문 연결도 검사한다.
@@ -34,7 +34,7 @@
 | syntax | 브라우저 JavaScript 파싱 | 구문 수정 |
 | math | 독립 수치 기준과 자동미분 교차 확인 | 계산과 설명 함께 확인 |
 | python | PDF 처리·근거 검증·로컬 HTTP·API 모의 실패 | 해당 경계 수정 |
-| browser | 예시 질문 전체 조작·카메라·자동재생·4개 화면 폭·실제 로컬 PDF 분석·실패·예시 복귀 | 화면 흐름 수정 |
+| browser | PDF 전용 흐름·13개 선택형 실험·카메라·재생·5개 화면 폭·실패/복구·메모·빈 상태 | 화면 흐름 수정 |
 | unchanged-inputs | 검증 도중 입력 변경 여부 | 안정된 상태에서 재실행 |
 
 전체 모드의 어느 단계든 실패하면 종료 코드 1, 결과 `failed`다. 빠른 모드는 성공해도 `partial`이며 브라우저 검증을 대신하지 않는다. 브라우저나 의존성이 없으면 전체 검증은 실패하고 필요한 설정을 알린다. 실패를 자동 건너뛰지 않는다.

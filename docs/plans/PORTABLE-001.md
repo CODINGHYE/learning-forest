@@ -1,6 +1,6 @@
 # PORTABLE-001 — 각 컴퓨터 로컬 실행과 비공개 GitHub 업로드
 
-- 상태: 로컬 준비 완료·GitHub 코드 업로드 중
+- 상태: 완료
 - 시작 코드 버전: `78128d6`
 - 대상: 설치·실행 진입점, 문서·의존성, 휴대 가능한 검증, GitHub 저장소
 
@@ -22,6 +22,7 @@
 
 - 구현: run.py, Windows start.bat, macOS/Linux start.sh. 일반 실행은 Python·pypdf만 사용하고 개발 의존성은 requirements-dev.txt로 분리. 기본 모델 gpt-4o-mini 유지
 - 검증: Windows의 깨끗한 소스 복사본에서 .venv 생성·pypdf 설치·로컬 HTTP 200·키 없이 상태 조회 확인. 수치 9개·Python 43개·브라우저 13개 실험/5개 폭 전체 검사 통과. macOS/Linux 실제 장비는 미검증
-- 저장소: https://github.com/CODINGHYE/learning-forest, 비공개 확인. 코드 업로드 진행 중
+- 저장소: https://github.com/CODINGHYE/learning-forest, 비공개·기본 main 확인. 코드 업로드 및 로컬/원격 커밋 일치 확인
+- 내려받기 검증: 실제 GitHub의 main을 새 폴더에 clone한 뒤 .venv 생성·실행 패키지 설치·서버 HTTP 200·기본 모델 gpt-4o-mini를 확인. 검증 중 유료 API를 호출하지 않음
 - 자료 검사: 기존 Git 기록의 텍스트/바이너리 146개 blob에서 실제 키 의심 패턴 없음. 교재·노트북·환경 파일·임시 CLI·QA·가상환경 제외
 - 배포: 미실시

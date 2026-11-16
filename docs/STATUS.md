@@ -2,7 +2,7 @@
 
 - 기준일: 2026-11-16 (Asia/Seoul)
 - 각 PC 실행·GitHub 준비: [PORTABLE-001](plans/PORTABLE-001.md). Windows/macOS/Linux 진입점과 실행/개발 의존성 분리. 현재 PC의 깨끗한 복사본에서 초기 설치·HTTP 확인. macOS/Linux 실기기는 미검증. 기본 검증은 개인 교재 없이 실행한다.
-- GitHub: [CODINGHYE/learning-forest](https://github.com/CODINGHYE/learning-forest), 비공개 확인. 웹 배포와 별개이며 업로드 결과는 원격 main 커밋으로 확인한다.
+- GitHub: [CODINGHYE/learning-forest](https://github.com/CODINGHYE/learning-forest), 비공개 main 업로드·커밋 일치 확인. 실제 GitHub clone에서 첫 설치·서버 HTTP 200 확인. 웹 배포는 하지 않았다.
 - 최종 목표·완료/미완료·남은 계획: [ROADMAP](ROADMAP.md)
 - 최신 UI·legacy 제거·기능 검토: [UI-001](plans/UI-001.md), [검토 기록](UI_REVIEW.md)
 - 실제 교재 작업: [REALPDF-001](plans/REALPDF-001.md), [실제 교재 검토](REAL_PDF_REVIEW.md)

@@ -150,6 +150,7 @@ def main():
             step('fixtures', [sys.executable, str(APP / 'tests/pdf_fixtures.py')])
             # Do not attach to or stop the user's preview. This process owns its server.
             run_id = uuid.uuid4().hex
+            env['FOREST_QA_RUN_ID'] = run_id
             address_file = OUT / 'qa-server.json'
             server_log = (OUT / 'server.log').open('w', encoding='utf-8')
             server = subprocess.Popen([sys.executable, str(ROOT / 'scripts/serve_qa.py'),
@@ -179,6 +180,8 @@ def main():
             step('server', action=ready)
             step('browser', [node, str(APP / 'tests/browser.qa.cjs')], timeout=150)
             report['browser'] = json.loads((OUT / 'browser-report.json').read_text(encoding='utf-8'))
+            if report['browser'].get('runId') != run_id:
+                raise RuntimeError('Browser report does not belong to this verification run')
         else:
             report['steps'].append({'name': 'browser', 'result': 'skipped', 'reason': 'quick mode'})
         step('unchanged-inputs', action=lambda: assert_unchanged(report['inputSha256']))

@@ -35,7 +35,7 @@
   $('openai-connect-form').addEventListener('submit',async event=>{
     event.preventDefault();if(busy)return;++revision;setBusy(true);message('내 키로 선택한 모델에 접근할 수 있는지 확인하고 있어요.');
     const body=JSON.stringify({apiKey:$('openai-key').value.trim(),model:$('openai-model').value.trim()});$('openai-key').value='';
-    try{const result=await ForestAPI.request('/api/openai/connect',{method:'POST',headers:{'Content-Type':'application/json'},body,signal:AbortSignal.timeout(25000)});status.connection=result;status.available=true;blockedPersonal=false;serverHelp(false);update();$('analysis-mode').value='openai';dialog.close();emit('forest:connected');}
+    try{const result=await ForestAPI.request('/api/openai/connect',{method:'POST',headers:{'Content-Type':'application/json'},body,signal:AbortSignal.timeout(25000)});status.connection=result;status.available=true;blockedPersonal=false;serverHelp(false);update();dialog.close();emit('forest:connected');}
     catch(error){message(error.message||'로컬 서버에 연결하지 못했습니다.',true);}
     finally{setBusy(false);}
   });

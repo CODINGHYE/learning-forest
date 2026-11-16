@@ -78,9 +78,9 @@ def build_content(design, review):
         reviewed[name] = {'definition':definition,'purpose':purpose,'example':example}
     relation_section = design.split('## 16. 지원 개념의 검토된 연결 이유',1)[-1].split('\n## ',1)[0]
     reviewed_edges = [{'from':a.strip(),'to':b.strip(),'type':kind.strip(),'reason':reason.strip()} for a,b,kind,reason in re.findall(r'^\| ([^|]+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$',relation_section,re.M) if a.strip() not in {'시작 개념','---'}]
-    if len(reviewed)!=32 or any(edge['from'] not in reviewed or edge['to'] not in reviewed for edge in reviewed_edges):
+    if len(reviewed)<32 or any(edge['from'] not in reviewed or edge['to'] not in reviewed for edge in reviewed_edges):
         raise ValueError('Invalid reviewed concept or relationship registry')
-    return {'groups': groups, 'questions': questions, 'edges': edges, 'glossary': glossary, 'reviewedConcepts':reviewed,'reviewedEdges':reviewed_edges,'version': '0.4.0'}
+    return {'scenarios': questions, 'glossary': glossary, 'reviewedConcepts':reviewed,'reviewedEdges':reviewed_edges,'version': '0.5.0'}
 
 
 def render(data):
@@ -98,10 +98,10 @@ def main():
     if args.check:
         if not target.exists() or target.read_text(encoding='utf-8') != expected:
             raise SystemExit('Stale dist/content.js. Run learning-forest/scripts/build_content.py and review its diff.')
-        print('Content contract and generated file: PASS (13 questions)')
+        print('Content contract and generated file: PASS (13 visualization scenarios)')
     else:
         target.write_text(expected, encoding='utf-8', newline='\n')
-        print('Generated 13 questions from the canonical design.')
+        print('Generated 13 visualization scenarios and reviewed concept explanations.')
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-"""Grounded concept extraction. Local mode is structural, not an LLM simulation."""
+"""OpenAI map grounding and source-based coverage candidates."""
 import re
 import unicodedata
 from pathlib import Path
@@ -105,8 +105,9 @@ Q3.4 경사하강 학습률, Q4.1 텐서 모양과 행렬곱, Q4.2 계산그래�
 필드 id는 C1 등, groupId는 PG1 등으로 한다. 개념 이름 title은 짧게, question은 자연스러운 질문으로 한다.
 description은 교재 내용의 쉬운 설명이며 원문을 넘어 추측하지 않는다. 근거 구절은 서버가 선택한 원문 번호에서 가져온다.
 핵심 목표는 PDF 전체에서 무엇을 배우는지, 각 개념이 어떤 필요 때문에 등장하며 서로 어떻게 연결되는지를 비전공자가 자기 말로 설명하게 하는 것이다.
-summary에는 PDF 전체의 큰 주제와 개념들이 함께 다루는 문제를 2~3문장으로 요약한다.
+summary에는 PDF 전체에서 함께 푸는 문제, 각 묶음의 역할, 그 역할이 이어지는 이유를 2~3문장으로 요약한다. 기술 이름을 나열하거나 '다양한 기법을 이해한다'로 끝내지 않는다. 예를 들어 글을 조각으로 나누고 숫자로 표현한 뒤 문장을 이해하거나 생성하는 과정처럼 입력·처리·목표를 이어 쓴다.
 각 개념의 purpose에는 언제 무엇을 위해 쓰는지, example에는 한 가지 쉬운 상황을 쓴다. 교재 밖의 예시는 '이해를 돕는 예'라고 밝힌다.
+토큰·벡터·문맥·가중합 같은 낯선 말은 첫 문장에서 뜻을 풀고, 정의·용도·예시에 같은 추상 문장을 반복하지 않는다. 예시는 실제 문장이나 작은 숫자로 입력과 달라지는 결과를 보여준다. NLP에서는 토큰 번호와 임베딩, 정적 단어 표현과 문맥 표현, 인코더와 디코더, BERT와 GPT의 역할을 혼동하지 않는다.
 edges는 목차의 이웃 순서를 복사하지 말고 실제 의미 관계를 설명한다. reason에는 두 개념 이름을 포함해 A가 하는 일과 B를 연결하는 이유를 1~2문장으로 쓴다.
 예: 손실은 틀린 정도를 숫자로 비교하며, 미분은 그 숫자를 줄이기 위해 무엇을 어느 방향으로 바꿀지 알아보는 데 쓰인다. 미분이 오차 자체를 만들기 위해 필요하다고 쓰지 않는다.
 관계는 학습 도움·부분과 전체·비교·필요한 도구·계산 과정 등을 구별한다. 모든 관계를 반드시 필요한 선행 조건이나 역사적 순서로 단정하지 않는다.
@@ -129,14 +130,7 @@ def evidence_anchors(pages):
     return anchors
 
 
-def excerpt(text, pattern=None):
-    text = compact(text)
-    match = re.search(pattern, text, re.I) if pattern else None
-    start = max(0, match.start() - 40) if match else 0
-    return text[start:start + 340]
-
-
-def assemble(nodes, groups, edges, pages, name, mode):
+def assemble(nodes, groups, edges, pages, name):
     ids = {n['id'] for n in nodes}
     edges = [e for e in edges if e['from'] in ids and e['to'] in ids and e['from'] != e['to']]
     for node in nodes:
@@ -147,74 +141,34 @@ def assemble(nodes, groups, edges, pages, name, mode):
         node['kind'] = 'pdf'
     groups = [g for g in groups if any(n['group'] == g['id'] for n in nodes)]
     version_match = re.search(r'버전:\s*([^\s]+)', read_principles())
-    return {'groups': groups, 'questions': nodes, 'edges': edges, 'document': {'name': name, 'pageCount': len(pages), 'conceptCount': len(nodes), 'principlesVersion': version_match.group(1) if version_match else 'unknown', 'mode': mode, 'analysisLabel': '로컬 구조 분석' if mode == 'local' else 'OpenAI 문맥 분석', 'notice': 'PDF의 텍스트에서 주제를 찾고 검토된 설명을 연결했습니다. 연결은 학습용 보충 설명이며, 이미지·도표의 해석은 원문에서 확인해주세요.' if mode == 'local' else '추출한 텍스트를 OpenAI로 분석했습니다. 근거 구절과 페이지를 함께 확인하세요.', 'lowTextPages': [p['page'] for p in pages if len(p['text'].strip()) < 20]}}
+    return {'groups': groups, 'questions': nodes, 'edges': edges, 'document': {'name': name, 'pageCount': len(pages), 'conceptCount': len(nodes), 'principlesVersion': version_match.group(1) if version_match else 'unknown', 'mode': 'openai', 'analysisLabel': 'OpenAI 문맥 분석', 'notice': '추출한 텍스트를 OpenAI로 분석했습니다. 근거 구절과 페이지를 함께 확인하세요.', 'lowTextPages': [p['page'] for p in pages if len(p['text'].strip()) < 20]}}
 
 
-def analyze_local(pages, name):
-    nodes, found = [], {}
-    groups = [{'id': f'PG{i+1}', 'title': q, 'short': short, 'intro': '이 PDF에서 찾은 관련 개념입니다.', 'preview': None} for i, (q, short) in enumerate(GROUPS)]
+def detect_source_topics(pages):
+    """Source candidates for AI coverage checks; this does not generate a map."""
+    nodes = []
     for key, title, pattern, index, question, explanation, scene in CATALOG:
         matches = [p for p in pages if re.search(pattern, p['text'], re.I)]
         if not matches:
             continue
-        # Prefer pages where the topic is a heading, rather than an outline or timeline mention.
         ranked = sorted(matches, key=lambda p: (not bool(re.search(pattern, p['text'].split('\n')[0], re.I)), len(p['text']) < 80, p['page']))
-        evidence = [{'page': p['page'], 'excerpt': excerpt(p['text'], pattern)} for p in ranked[:3]]
-        node = {'id': 'PDF-' + key, 'group': f'PG{index+1}', 'concept': title, 'title': question, 'goal': explanation.split('。')[0], 'explain': explanation, 'predict': f'{title}은 앞에서 본 어떤 내용과 이어질까요?', 'terms': title, 'check': f'{title}이 하는 일을 한 문장으로 설명해볼까요?', 'sceneId': scene, 'evidence': evidence, 'supplement': True}
-        nodes.append(node)
-        found[key] = node['id']
-    # When domain support is low, use this document's actual headings rather than an unrelated ML map.
-    if len(nodes) < 4:
-        return analyze_headings(pages, name)
-    nodes.sort(key=lambda n: (int(n['group'][-1]), n['evidence'][0]['page']))
-    edges = [{'from': found[a], 'to': found[b], 'type': kind, 'reason': reason, 'basis': '학습을 돕는 보충 연결'} for a,b,kind,reason in RELATIONS if a in found and b in found]
-    return assemble(nodes, groups, edges, pages, name, 'local')
-
-
-def analyze_headings(pages, name):
-    candidates, seen = [], set()
-    for p in pages:
-        lines = [compact(line) for line in p['text'].splitlines() if len(compact(line)) >= 4]
-        if not lines:
-            continue
-        if lines[0].casefold() in {'목차', 'contents', 'table of contents'}:
-            continue
-        title = next((line for line in lines[:5] if len(line) <= 90 and not re.fullmatch(r'[\d\s.]+', line)), lines[0][:65])
-        if title.casefold() in seen:
-            continue
-        seen.add(title.casefold())
-        candidates.append((title[:90], p))
-    if not candidates:
-        raise ValueError('개념 후보로 사용할 제목이나 본문을 찾지 못했습니다.')
-    selected = candidates if len(candidates) <= 24 else [candidates[round(i*(len(candidates)-1)/23)] for i in range(24)]
-    groups, nodes, edges = [], [], []
-    size = max(1, (len(selected)+3)//4)
-    for i, (title, page) in enumerate(selected):
-        gi = i//size
-        gid = f'PG{gi+1}'
-        if not any(g['id'] == gid for g in groups):
-            groups.append({'id': gid, 'title': f'문서 {gi+1}번째 부분에서 무엇을 다룰까?', 'short': f'{gi+1}번째 내용 묶음', 'intro': 'PDF의 실제 제목과 본문에서 구성한 내용입니다.', 'preview': None})
-        body = excerpt(page['text'])
-        nodes.append({'id': f'PDF-C{i+1}', 'group': gid, 'concept': title, 'title': f'{title}의 핵심은 무엇일까?', 'goal': 'PDF의 실제 내용을 확인하고 앞뒤 내용을 연결합니다.', 'predict': '이 부분은 어떤 문제나 내용을 설명하고 있나요?', 'explain': '이 부분의 원문을 아래에서 확인할 수 있습니다. 로컬 구조 분석은 제목과 본문을 묶어 보여주며, 새로운 해설을 추측해서 만들지는 않습니다.', 'terms': title, 'check': '아래 원문에서 가장 중요한 문장을 골라볼까요?', 'sceneId': None, 'evidence': [{'page': page['page'], 'excerpt': body}], 'supplement': False})
-        if i:
-            edges.append({'from': nodes[-2]['id'], 'to': nodes[-1]['id'], 'type': '문서 순서', 'reason': 'PDF에서 다음에 다루는 내용입니다. 선행 개념이나 역사적 인과를 뜻하지 않습니다.', 'basis': '원문 페이지 순서'})
-    return assemble(nodes, groups, edges, pages, name, 'local')
+        nodes.append({'key':key, 'title':title, 'group':f'PG{index+1}', 'meaning':explanation,
+                      'pages':[p['page'] for p in ranked[:3]], 'sceneId':scene})
+    return sorted(nodes, key=lambda n: (int(n['group'][-1]), n['pages'][0]))
 
 
 def source_concept_plan(pages, name):
-    """Long ML lessons keep their source-detected topics instead of a tiny LLM summary."""
+    """Long ML lessons keep source-detected topics in the OpenAI response schema."""
     if len(pages) < 20:
         return None
-    local = analyze_local(pages, name)
-    known = {key for key, *_ in CATALOG}
-    nodes = [node for node in local['questions'] if node['id'].removeprefix('PDF-') in known]
+    nodes = detect_source_topics(pages)
     if len(nodes) < 10:
         return None
     nodes = nodes[:32]
-    id_map = {node['id']:f'C{i}' for i,node in enumerate(nodes,1)}
-    planned = {id_map[node['id']]:{'title':node['concept'], 'group':node['group'], 'meaning':node['explain'], 'pages':[e['page'] for e in node['evidence']], 'sceneId':node['sceneId']} for node in nodes}
-    groups = {group['id']:group['title'] for group in local['groups'] if any(node['group']==group['id'] for node in nodes)}
-    relations = [{'from':id_map[edge['from']], 'to':id_map[edge['to']], 'type':edge['type'], 'reason':edge['reason']} for edge in local['edges'] if edge['from'] in id_map and edge['to'] in id_map]
+    id_map = {node['key']:f'C{i}' for i,node in enumerate(nodes,1)}
+    planned = {id_map[node['key']]:{k:node[k] for k in ('title','group','meaning','pages','sceneId')} for node in nodes}
+    groups = {f'PG{i+1}':title for i,(title,_) in enumerate(GROUPS) if any(node['group']==f'PG{i+1}' for node in nodes)}
+    relations = [{'from':id_map[a], 'to':id_map[b], 'type':kind, 'reason':reason} for a,b,kind,reason in RELATIONS if a in id_map and b in id_map]
     return {'concepts':planned, 'groups':groups, 'relations':relations}
 
 
@@ -317,7 +271,7 @@ def normalize_ai_map(raw, pages, name, anchors=None, plan=None):
     summary = raw.get('summary', '')
     if not isinstance(summary, str) or len(summary) > 4000:
         raise ValueError('Invalid summary')
-    result = assemble(nodes, groups, raw['edges'], pages, name, 'openai')
+    result = assemble(nodes, groups, raw['edges'], pages, name)
     result['document']['summary'] = summary
     result['document']['groundingCorrections'] = corrections
     result['document']['groundingMethod'] = 'numbered_source_spans' if all('evidenceId' in item for item in raw['concepts']) else 'literal_quote'

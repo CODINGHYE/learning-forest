@@ -1,4 +1,4 @@
-"""Local-only web server: PDF text analysis and optional explicit OpenAI analysis."""
+"""Local-only web server for personal OpenAI PDF concept maps."""
 import argparse
 import io
 import json
@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse, quote
 
 from pypdf import PdfReader
-from pdf_analysis import analyze_local, normalize_ai_map, make_schema, read_principles, RULES, EvidenceValidationError, evidence_anchors, source_concept_plan
+from pdf_analysis import normalize_ai_map, make_schema, read_principles, RULES, EvidenceValidationError, evidence_anchors, source_concept_plan
 
 ROOT = Path(__file__).resolve().parent
 MAX_BYTES = 30 * 1024 * 1024
@@ -86,13 +86,13 @@ def openai_request(request, timeout):
             404: ('모델을 찾지 못했습니다. 모델 ID와 해당 프로젝트의 접근 권한을 확인해주세요.', 'model_unavailable'),
             429: ('사용 한도 또는 요청 한도에 도달했습니다. OpenAI의 API 결제·크레딧·사용 한도를 확인해주세요.', 'rate_or_quota_limit'),
         }
-        message, code = messages.get(exc.code, ('OpenAI 요청을 마치지 못했습니다. 잠시 후 다시 시도하거나 로컬 분석을 선택해주세요.', 'upstream_error'))
+        message, code = messages.get(exc.code, ('OpenAI 요청을 마치지 못했습니다. 잠시 후 다시 시도해주세요.', 'upstream_error'))
         raise ApiError(message, code) from None
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         cause = getattr(exc, 'reason', exc)
         if getattr(cause, 'winerror', None) == 10013 or getattr(cause, 'errno', None) in {1, 13, 10013}:
             raise ApiError('분석 서버의 외부 연결 권한이 없어 OpenAI에 접속할 수 없어요. 서버의 실행 권한을 확인해주세요. API 키를 바꾸는 것으로는 해결되지 않습니다.', 'network_blocked') from None
-        raise ApiError('OpenAI에 연결하지 못했습니다. 네트워크를 확인하거나 로컬 분석을 선택해주세요.', 'connection_failed') from None
+        raise ApiError('OpenAI에 연결하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.', 'connection_failed') from None
     except (ValueError, TypeError):
         raise ApiError('OpenAI 응답을 읽지 못했습니다. 잠시 후 다시 시도해주세요.', 'invalid_response') from None
 
@@ -141,7 +141,7 @@ def extract_pdf(data):
 def analyze_openai(pages, name, *, api_key=None, model=None):
     key = os.environ.get('OPENAI_API_KEY', '') if api_key is None else api_key
     if not key:
-        raise ValueError('OpenAI 연결이 설정되지 않았습니다. 로컬 분석을 선택하거나 서버의 API 키 설정을 확인해주세요.')
+        raise ValueError('OpenAI 연결이 설정되지 않았습니다. 내 OpenAI 연결에서 API 키를 연결해주세요.')
     # This explicit mode sends only extracted text. PDF bytes are not sent or persisted.
     chunks = []
     included_pages = []
@@ -183,7 +183,7 @@ def analyze_openai(pages, name, *, api_key=None, model=None):
     except (ValueError, TypeError, KeyError) as exc:
         problems = {'Invalid node':'개념 ID 또는 내용 묶음 연결', 'Invalid relationship':'개념 사이 연결의 대상 또는 이유', 'Invalid relationships':'개념 사이 연결 목록', 'Invalid concept explanation':'개념의 용도 또는 예시', 'Invalid summary':'PDF 전체 요약', 'Invalid concept count':'개념 수', 'Missing planned concepts':'원문에서 확인한 필수 개념 범위', 'Invalid group count':'내용 묶음 수', 'Duplicate group ID':'중복된 내용 묶음'}
         detail = problems.get(str(exc), '응답의 JSON 구조')
-        raise ApiError(f'OpenAI 응답의 {detail}을 확인하지 못했어요. 기존 지도는 유지합니다. 다시 생성하거나 로컬 미리보기를 선택해주세요.', 'invalid_map') from None
+        raise ApiError(f'OpenAI 응답의 {detail}을 확인하지 못했어요. 기존 지도는 유지합니다. 다시 생성해주세요.', 'invalid_map') from None
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -260,24 +260,20 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if length < 1 or length > MAX_BYTES:
                 raise ValueError('0보다 크고 30MB 이하인 PDF를 선택해주세요.')
-            mode = self.headers.get('X-Analysis-Mode', 'local')
-            if mode not in {'local', 'openai'}:
-                raise ValueError('지원하지 않는 분석 방식입니다.')
+            if self.headers.get('X-Analysis-Mode', 'openai') != 'openai':
+                raise ValueError('PDF는 연결한 OpenAI로 분석합니다. 이전 화면을 새로고침해주세요.')
             pages = extract_pdf(self.rfile.read(length))
             name = Path(unquote(self.headers.get('X-Filename', 'document.pdf'))).name[:200]
-            if mode == 'openai':
-                source = self.headers.get('X-OpenAI-Source', 'personal' if self.session_token() else 'server')
-                if source == 'personal':
-                    record = CONNECTIONS.get(self.session_token())
-                    if not record:
-                        raise ApiError('개인 OpenAI 연결이 만료되었거나 해제됐습니다. 내 OpenAI 연결에서 다시 연결해주세요.', 'connection_expired', 401)
-                    result = analyze_openai(pages, name, api_key=record['key'], model=record['model'])
-                elif source == 'server':
-                    result = analyze_openai(pages, name)
-                else:
-                    raise ValueError('OpenAI 연결 방식을 확인해주세요.')
+            source = self.headers.get('X-OpenAI-Source', 'personal' if self.session_token() else 'server')
+            if source == 'personal':
+                record = CONNECTIONS.get(self.session_token())
+                if not record:
+                    raise ApiError('개인 OpenAI 연결이 만료되었거나 해제됐습니다. 내 OpenAI 연결에서 다시 연결해주세요.', 'connection_expired', 401)
+                result = analyze_openai(pages, name, api_key=record['key'], model=record['model'])
+            elif source == 'server':
+                result = analyze_openai(pages, name)
             else:
-                result = analyze_local(pages, name)
+                raise ValueError('OpenAI 연결 방식을 확인해주세요.')
             self.send_json(200, result)
         except ApiError as exc:
             self.send_json(exc.status, {'error': str(exc), 'code': exc.code})

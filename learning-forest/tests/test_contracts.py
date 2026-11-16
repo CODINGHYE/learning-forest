@@ -17,7 +17,7 @@ sys.path.insert(0, str(APP / 'scripts'))
 from build_content import build_content
 from pdf_fixtures import GENERAL_TEXT, make_pdf
 import server
-from pdf_analysis import analyze_local, normalize_ai_map, evidence_anchors, make_schema, source_concept_plan
+from pdf_analysis import detect_source_topics, normalize_ai_map, evidence_anchors, make_schema, source_concept_plan
 
 
 class ContentContractTests(unittest.TestCase):
@@ -46,21 +46,16 @@ class ContentContractTests(unittest.TestCase):
 
 
 class PdfTests(unittest.TestCase):
-    def test_valid_pdf_and_local_evidence(self):
+    def test_valid_pdf_provides_literal_numbered_evidence(self):
         pages = server.extract_pdf(make_pdf())
-        result = analyze_local(pages, 'fixture.pdf')
-        self.assertGreaterEqual(len(result['questions']), 4)
-        self.assertTrue(any(q['sceneId'] for q in result['questions']))
-        ids = {q['id'] for q in result['questions']}
-        for q in result['questions']:
-            for evidence in q['evidence']:
-                self.assertIn(evidence['excerpt'], ' '.join(pages[evidence['page'] - 1]['text'].split()))
-        self.assertTrue(all(e['from'] in ids and e['to'] in ids for e in result['edges']))
+        anchors = evidence_anchors(pages)
+        self.assertTrue(anchors)
+        for anchor in anchors.values():
+            self.assertIn(anchor['excerpt'], ' '.join(pages[anchor['page']-1]['text'].split()))
 
-    def test_unsupported_topic_has_no_unrelated_scene(self):
-        result = analyze_local(server.extract_pdf(make_pdf(GENERAL_TEXT)), 'garden.pdf')
-        self.assertTrue(result['questions'])
-        self.assertTrue(all(q['sceneId'] is None for q in result['questions']))
+    def test_unsupported_topic_has_no_ml_coverage_candidates(self):
+        pages = server.extract_pdf(make_pdf(GENERAL_TEXT))
+        self.assertIsNone(source_concept_plan(pages, 'garden.pdf'))
 
     def test_invalid_or_unreadable_pdf_is_rejected(self):
         for data in (b'not a PDF', b'%PDF-1.4\nbroken', make_pdf(''), make_pdf(encrypted=True)):
@@ -215,7 +210,7 @@ class HttpTests(unittest.TestCase):
         cls.httpd.server_close()
         cls.thread.join(timeout=3)
 
-    def request(self, data=None, mode='local', extra=None, endpoint='/api/analyze-pdf'):
+    def request(self, data=None, mode='openai', extra=None, endpoint='/api/analyze-pdf'):
         headers = {'Content-Type': 'application/pdf', 'X-Analysis-Mode': mode, 'X-Filename': 'fixture.pdf'}
         headers.update(extra or {})
         request = Request(self.origin + endpoint, data=data, headers=headers)
@@ -225,21 +220,29 @@ class HttpTests(unittest.TestCase):
         except HTTPError as error:
             return error.code, json.load(error)
 
-    def test_status_and_local_success_without_external_calls(self):
+    def test_status_and_openai_http_boundary_without_external_calls(self):
         with patch.dict(os.environ, {'OPENAI_API_KEY': ''}):
             status, body = self.request(endpoint='/api/status')
         self.assertEqual(status, 200)
         self.assertFalse(body['openaiAvailable'])
-        with patch.object(server, 'analyze_openai', side_effect=AssertionError('local mode contacted AI')):
+        with patch.object(server, 'analyze_openai', return_value={'document':{'mode':'openai'}}) as analyze:
             status, body = self.request(make_pdf())
         self.assertEqual(status, 200)
-        self.assertEqual(body['document']['mode'], 'local')
+        self.assertEqual(body['document']['mode'], 'openai')
+        self.assertTrue(analyze.call_args.args[0][0]['text'])
+
+    def test_retired_local_mode_is_rejected_without_contacting_openai(self):
+        with patch.object(server, 'analyze_openai') as analyze:
+            status, body = self.request(make_pdf(), 'local')
+        self.assertEqual(status, 422)
+        self.assertIn('OpenAI', body['error'])
+        analyze.assert_not_called()
 
     def test_bad_input_size_mode_and_cross_origin(self):
-        cases = [(b'', 'local', {}, 422), (b'bad', 'local', {}, 422),
+        cases = [(b'', 'openai', {}, 422), (b'bad', 'openai', {}, 422),
                  (make_pdf(), 'unknown', {}, 422),
-                 (b'', 'local', {'Content-Length': str(server.MAX_BYTES + 1)}, 422),
-                 (make_pdf(), 'local', {'Origin': 'http://example.invalid'}, 403)]
+                 (b'', 'openai', {'Content-Length': str(server.MAX_BYTES + 1)}, 422),
+                 (make_pdf(), 'openai', {'Origin': 'http://example.invalid'}, 403)]
         for data, mode, extra, expected in cases:
             with self.subTest(mode=mode, expected=expected):
                 status, body = self.request(data, mode, extra)

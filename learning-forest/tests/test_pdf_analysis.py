@@ -9,7 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pypdf import PdfReader, PdfWriter
 from pdf_fixtures import make_pdf
-from pdf_analysis import analyze_local, normalize_ai_map, read_principles
+from pdf_analysis import detect_source_topics, source_concept_plan, evidence_anchors, normalize_ai_map, read_principles
 from server import extract_pdf, analyze_openai
 
 
@@ -28,38 +28,30 @@ def geology_pdf():
 
 
 class AnalysisTests(unittest.TestCase):
-    def test_extract_and_map_a_different_subject(self):
+    def test_extract_a_different_subject_without_building_a_fake_map(self):
         pages = extract_pdf(geology_pdf())
-        result = analyze_local(pages, 'geology.pdf')
-        self.assertEqual(result['document']['pageCount'], 3)
-        self.assertEqual(len(result['questions']), 3)
-        self.assertEqual(result['questions'][0]['concept'], 'Volcanoes')
-        self.assertTrue(all(q['sceneId'] is None for q in result['questions']))
-        self.assertTrue(all(e['type'] == '문서 순서' for e in result['edges']))
+        self.assertEqual(len(pages), 3)
+        self.assertEqual(detect_source_topics(pages), [])
+        self.assertIsNone(source_concept_plan(pages, 'geology.pdf'))
+        self.assertTrue(evidence_anchors(pages))
 
-    def test_uploaded_class_has_content_beyond_the_demo(self):
+    def test_uploaded_class_has_source_coverage(self):
         sources = list(Path('C:/Users/user/Downloads').glob('*Deep Learning Basics.pdf'))
         if not sources:
             self.skipTest('The user-provided reference PDF is not present on this machine.')
-        source = sources[0]
-        pages = extract_pdf(source.read_bytes())
-        result = analyze_local(pages, source.name)
+        pages = extract_pdf(sources[0].read_bytes())
         self.assertEqual(len(pages), 92)
-        self.assertGreater(len(result['questions']), 13)
-        self.assertIn('PDF-reinforcement', {q['id'] for q in result['questions']})
-        for q in result['questions']:
-            for item in q['evidence']:
-                self.assertIn(item['excerpt'], ' '.join(pages[item['page']-1]['text'].split()))
-        ids = {q['id'] for q in result['questions']}
-        self.assertTrue(all(e['from'] in ids and e['to'] in ids for e in result['edges']))
+        plan = source_concept_plan(pages, sources[0].name)
+        self.assertEqual(len(plan['concepts']), 32)
+        self.assertIn('강화학습', {node['title'] for node in plan['concepts'].values()})
+        self.assertTrue(all(1 <= page <= len(pages) for node in plan['concepts'].values() for page in node['pages']))
 
-    def test_only_present_concepts_are_included(self):
+    def test_only_present_topics_are_coverage_candidates(self):
         pages = [{'page':1,'text':'Perceptron uses weights and bias. Activation function ReLU changes the output. MLP connects layers.'}]
-        result = analyze_local(pages, 'small.pdf')
-        ids = {q['id'] for q in result['questions']}
-        self.assertIn('PDF-perceptron', ids)
-        self.assertNotIn('PDF-reinforcement', ids)
-        self.assertNotIn('PDF-pca', ids)
+        keys = {node['key'] for node in detect_source_topics(pages)}
+        self.assertIn('perceptron', keys)
+        self.assertNotIn('reinforcement', keys)
+        self.assertNotIn('pca', keys)
 
     def test_invalid_or_blank_pdf_is_actionable(self):
         with self.assertRaisesRegex(ValueError, 'PDF 파일'):
